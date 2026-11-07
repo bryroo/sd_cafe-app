@@ -493,7 +493,7 @@ export function Search() {
                 <Row>
                   <div className="recent-header">
                     <span className="t-h3">Recent searches</span>
-                    <Button variant="text" height={40} full={false} onClick={() => setRecentSearches([])}>
+                    <Button variant="text" height={48} full={false} onClick={() => setRecentSearches([])}>
                       Clear
                     </Button>
                   </div>

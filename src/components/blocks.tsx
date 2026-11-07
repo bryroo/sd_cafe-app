@@ -295,7 +295,7 @@ export function ReorderCard({
         <span className="t-h3">{summary}</span>
         <span className="t-price">{peso(total)}</span>
       </span>
-      <button className="btn btn--secondary" style={{ height: 40 }} onClick={onReorder}>
+      <button className="btn btn--secondary" style={{ height: 48 }} onClick={onReorder}>
         <span className="t-button">Reorder</span>
       </button>
     </div>
