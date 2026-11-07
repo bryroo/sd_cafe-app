@@ -1,6 +1,13 @@
 # Not needed to build the app: keep them off Vercel's servers
-supabase
 design
 scripts
 dist
 .env*
+
+# The database lives in Supabase. Only the shared pricing engine is part of the app build
+# (src imports supabase/functions/_shared/pricing.ts).
+supabase/*
+!supabase/functions
+supabase/functions/*
+!supabase/functions/_shared
+supabase/functions/_shared/*.test.ts

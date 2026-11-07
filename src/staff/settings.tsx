@@ -12,6 +12,7 @@ import {
   STAFF_LOGIN,
   getShared,
   hourLabel,
+  resetDemoData,
   setStore,
   staffLogin,
   staffLogout,
@@ -44,11 +45,16 @@ export function StaffLogin() {
     return () => clearInterval(t)
   }, [locked])
 
-  const submit = (e: React.FormEvent) => {
+  const [busy, setBusy] = useState(false)
+  const submit = async (e: React.FormEvent) => {
     e.preventDefault()
-    const r = staffLogin(user, password)
+    setBusy(true)
+    const r = await staffLogin(user, password)
+    setBusy(false)
     setNow(Date.now())
     if (r.ok) return navigate('/staff', { replace: true })
+    if (r.notStaff) return setError("This account isn't a staff account.")
+    if (r.offline) return setError("Couldn't reach the cafe. Check the connection and try again.")
     if (r.lockedUntil) {
       setLockedUntil(r.lockedUntil)
       setError('')
@@ -97,8 +103,8 @@ export function StaffLogin() {
           </button>
         </span>
       </label>
-      <button className="st-btn st-btn--primary st-btn--wide" type="submit" disabled={!user || !password || locked || !online}>
-        <span className="t-button">Sign in</span>
+      <button className="st-btn st-btn--primary st-btn--wide" type="submit" disabled={!user || !password || locked || !online || busy} aria-busy={busy}>
+        <span className="t-button">{busy ? 'Signing in…' : 'Sign in'}</span>
       </button>
     </form>
   )
@@ -109,6 +115,7 @@ export function StaffLogin() {
 export function StoreSettings({ onTurnOff }: { onTurnOff: () => void }) {
   const { store } = useShared()
   const { act, go } = useStaff()
+  const [confirmReset, setConfirmReset] = useState(false)
   const [fee, setFee] = useState(String(store.deliveryFee))
   const [prep, setPrep] = useState(String(store.prepMinutes))
   const save = (change: Parameters<typeof setStore>[0], msg = 'Saved') => act(() => setStore(change), msg)
@@ -219,14 +226,66 @@ export function StoreSettings({ onTurnOff }: { onTurnOff: () => void }) {
             on={store.chime}
             onChange={(v) => save({ chime: v }, v ? 'Chime on' : 'Chime muted')}
           />
-          <Toggle
-            label="Auto-advance orders (demo)"
-            description="Every open order moves on a step every 8 seconds, for demos with one person. Off for real use."
-            on={store.autoAdvance}
-            onChange={(v) => save({ autoAdvance: v }, v ? 'Auto-advance on' : 'Auto-advance off')}
-          />
         </div>
       </Panel>
+
+      <Panel title="Demo">
+        <div className="st-toggles">
+          <Toggle
+            label="Demo mode"
+            description={
+              store.demoMode
+                ? 'The screen index, demo sign-ins, auto-advance and Reset demo data work. Turn off before a real launch.'
+                : 'Demo tools are off: the app behaves as the real product.'
+            }
+            on={store.demoMode}
+            onChange={(v) => save({ demoMode: v, ...(v ? {} : { autoAdvance: false }) }, v ? 'Demo mode on' : 'Demo mode off')}
+          />
+          {store.demoMode && (
+            <Toggle
+              label="Auto-advance orders (demo)"
+              description="While this console is open, every open order moves on a step every 8 seconds, for demos with one person."
+              on={store.autoAdvance}
+              onChange={(v) => save({ autoAdvance: v }, v ? 'Auto-advance on' : 'Auto-advance off')}
+            />
+          )}
+        </div>
+        {store.demoMode && (
+          <div>
+            <StaffButton variant="secondary" icon="refresh" onClick={() => setConfirmReset(true)}>
+              Reset demo data
+            </StaffButton>
+          </div>
+        )}
+      </Panel>
+      {confirmReset && (
+        <Modal
+          title="Reset the demo?"
+          tone="danger"
+          onClose={() => setConfirmReset(false)}
+          actions={
+            <>
+              <StaffButton
+                variant="danger"
+                onClick={() => {
+                  setConfirmReset(false)
+                  act(() => resetDemoData(), 'Demo data reset')
+                }}
+              >
+                Reset demo data
+              </StaffButton>
+              <StaffButton variant="secondary" onClick={() => setConfirmReset(false)}>
+                Keep it as it is
+              </StaffButton>
+            </>
+          }
+        >
+          <p className="t-body">
+            Every order and automated order is cleared and the demo customers (Maria, Ana, Jen, Leo, Paolo, Carlo) are
+            recreated with their sample orders, points and vouchers. Store settings go back to their defaults.
+          </p>
+        </Modal>
+      )}
 
       <Panel>
         <button className="st-link-row" onClick={() => go('/staff/availability')}>
@@ -321,7 +380,7 @@ export function StaffProfile() {
       <Panel>
         <Fact label="Name">{staff.name}</Fact>
         <Fact label="Role">{staff.role}</Fact>
-        <Fact label="Username">{STAFF_LOGIN.username}</Fact>
+        <Fact label="Username">{staff.username ?? '—'}</Fact>
       </Panel>
       <div>
         <StaffButton variant="danger" icon="logout" onClick={() => setConfirm(true)}>
@@ -337,8 +396,7 @@ export function StaffProfile() {
               <StaffButton
                 variant="danger"
                 onClick={() => {
-                  staffLogout()
-                  navigate('/staff/login', { replace: true })
+                  void staffLogout().finally(() => navigate('/staff/login', { replace: true }))
                 }}
               >
                 Log out

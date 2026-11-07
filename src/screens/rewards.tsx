@@ -7,7 +7,6 @@ import { Content, Row, Screen, TopBar } from '../components/Screen'
 import { Button, RuleCheck } from '../components/ui'
 import { Icon } from '../components/Icon'
 import {
-  activity,
   promotionById,
   promotions,
   rewardById,
@@ -24,7 +23,7 @@ import './rewards.css'
 
 const fmt = (n: number) => n.toLocaleString('en-PH')
 
-/** Points credited or spent in the app (newest first), then the older history */
+/** The points ledger (SRS POINTS_TXN), newest first */
 function useActivity(): Activity[] {
   const { pointsLog } = useShared()
   const live = pointsLog.map((e) => {
@@ -37,7 +36,7 @@ function useActivity(): Activity[] {
       points: e.points,
     }
   })
-  return [...live, ...activity]
+  return live
 }
 
 /** Progress / Tier */
@@ -266,14 +265,17 @@ export function RewardDetail() {
   const [params] = useSearchParams()
   const navigate = useNavigate()
   const overlay = useOverlay()
-  const { points, redeemReward } = useApp()
+  const { points, redeemReward, myRewards } = useApp()
   const reward = rewardById(id)
   const [justRedeemed, setJustRedeemed] = useState(params.get('state') === 'redeemed')
+  const [busy, setBusy] = useState(false)
 
   if (!reward) return <MissingItem title="Reward" />
 
   const forced = params.get('state')
-  const state: 'default' | 'insufficient' | 'redeemed' | 'expired' = justRedeemed
+  // FR-LOY-06: a reward already redeemed and not yet used can't be redeemed again
+  const holds = myRewards.some((m) => m.rewardId === reward.id && m.status === 'Redeemed')
+  const state: 'default' | 'insufficient' | 'redeemed' | 'expired' = justRedeemed || holds
     ? 'redeemed'
     : forced === 'expired'
       ? 'expired'
@@ -284,8 +286,18 @@ export function RewardDetail() {
   const redeem = async () => {
     const ok = await overlay.confirm('redeem', { name: reward.name, cost: reward.cost, balance: points })
     if (!ok) return
-    redeemReward(reward.id, reward.cost)
-    setJustRedeemed(true)
+    // FR-LOY-05: points out and voucher in, in one database transaction
+    setBusy(true)
+    try {
+      await redeemReward(reward.id, reward.cost)
+      setJustRedeemed(true)
+    } catch (err) {
+      // 3.2.7.5: a failed or repeated redemption spends nothing
+      const msg = err instanceof Error ? err.message : ''
+      overlay.toast(/already have/i.test(msg) ? msg : "Couldn't redeem. Your points were not spent.")
+    } finally {
+      setBusy(false)
+    }
   }
 
   const need = Math.max(0, reward.cost - points)
@@ -298,7 +310,7 @@ export function RewardDetail() {
         state === 'redeemed' ? (
           <Button onClick={() => navigate('/menu')}>Use it on your next order</Button>
         ) : (
-          <Button disabled={state !== 'default'} onClick={redeem}>
+          <Button disabled={state !== 'default' || busy} onClick={redeem} aria-busy={busy}>
             Redeem · {fmt(reward.cost)} pts
           </Button>
         )

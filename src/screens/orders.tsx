@@ -19,7 +19,6 @@ import { Content, Row, Screen, TopBar, TopBarAction } from '../components/Screen
 import { Button } from '../components/ui'
 import { Icon } from '../components/Icon'
 import { isUnavailable, peso, priceFor } from '../data/menu'
-import { pastOrderByNumber, pastOrders, type PastOrder } from '../data/orders'
 import { useOverlay } from '../overlays/OverlayHost'
 import { useApp, type CartLine } from '../state/AppState'
 import { useOnline, retryConnection } from '../state/online'
@@ -179,9 +178,10 @@ export function OrderTracking() {
     const ok = await overlay.confirm('cancel-order')
     if (!ok) return
     try {
-      // FR-TRK-05: the shared store refunds in-app payments and gives the voucher back
-      moveOrder(order.number, 'Cancelled', 'customer')
+      // FR-TRK-05: the database refunds an in-app payment and gives the voucher back, in the same step
+      await moveOrder(order.number, 'Cancelled', 'customer')
     } catch {
+      // The cafe started preparing it a moment ago (IR-02)
       overlay.open('too-late')
     }
   }
@@ -382,7 +382,7 @@ export function Orders() {
             </Row>
           )
         ) : (
-          // FR-ROR-01: newest first — orders from the app, then the older history
+          // FR-ROR-01: newest first
           <>
             {done.map((o) => (
               <Row key={o.number}>
@@ -398,20 +398,6 @@ export function Orders() {
                 />
               </Row>
             ))}
-            {pastOrders.map((o) => (
-              <Row key={o.number}>
-                <OrderCard
-                  number={o.number}
-                  summary={summarize(o.lines)}
-                  total={o.subtotal - o.discount}
-                  when={o.date}
-                  status={{ label: o.status, tone: o.status === 'Cancelled' ? 'error' : 'dark' }}
-                  action="Reorder"
-                  onAction={() => reorder(o.lines)}
-                  onOpen={() => navigate(`/orders/${o.number}`)}
-                />
-              </Row>
-            ))}
           </>
         )}
       </Content>
@@ -419,7 +405,7 @@ export function Orders() {
   )
 }
 
-/** C-19 Order Detail — an order from the app, or one from the older history. */
+/** C-19 Order Detail — one of the customer's orders */
 export function OrderDetail() {
   const { number = '' } = useParams()
   const navigate = useNavigate()
@@ -427,9 +413,8 @@ export function OrderDetail() {
   const { myOrders } = useApp()
   const n = Number(number)
   const live = myOrders.find((o) => o.number === n)
-  const past: PastOrder | undefined = live ? undefined : pastOrderByNumber(n)
 
-  if (!live && !past) {
+  if (!live) {
     return (
       <Screen topBar={<TopBar title="Order" />}>
         <Content>
@@ -441,11 +426,11 @@ export function OrderDetail() {
     )
   }
 
-  const lines = live ? live.lines : past!.lines
-  const status = live ? stepLabel(live, live.status) : past!.status
-  const tone = live ? statusTone(live.status) : past!.status === 'Cancelled' ? 'error' : 'dark'
-  const f = live ? live.fulfillment : past!.fulfillment
-  const active = live && live.status !== 'Completed' && live.status !== 'Cancelled'
+  const lines = live.lines
+  const status = stepLabel(live, live.status)
+  const tone = statusTone(live.status)
+  const f = live.fulfillment
+  const active = live.status !== 'Completed' && live.status !== 'Cancelled'
 
   return (
     <Screen
@@ -464,10 +449,10 @@ export function OrderDetail() {
           <div className="detail-head">
             <StatusBadge label={status} tone={tone} />
             <FulfillmentBadge type={f} size="L" />
-            <span className="t-body-sm muted">{live ? dateTime(live.placedAt) : past!.date}</span>
+            <span className="t-body-sm muted">{dateTime(live.placedAt)}</span>
           </div>
         </Row>
-        {live?.status === 'Cancelled' && (
+        {live.status === 'Cancelled' && (
           <Row>
             <Alert tone="danger">
               {live.cancelledBy === 'customer' ? 'You cancelled this order.' : `Cancelled by the cafe: ${live.cancelReason}.`}{' '}
@@ -483,24 +468,20 @@ export function OrderDetail() {
           </div>
         </Row>
         <Row>
-          {live ? (
-            <PriceBreakdown
-              subtotal={live.subtotal}
-              discount={live.discount}
-              offer={live.offerName ? { name: live.offerName, amount: live.offerDiscount ?? 0, note: '' } : null}
-              reward={live.rewardName ? { name: live.rewardName, amount: live.rewardDiscount ?? 0, items: [] } : null}
-              deliveryFee={live.deliveryFee}
-            />
-          ) : (
-            <PriceBreakdown subtotal={past!.subtotal} discount={past!.discount} deliveryFee={0} />
-          )}
+          <PriceBreakdown
+            subtotal={live.subtotal}
+            discount={live.discount}
+            offer={live.offerName ? { name: live.offerName, amount: live.offerDiscount ?? 0, note: '' } : null}
+            reward={live.rewardName ? { name: live.rewardName, amount: live.rewardDiscount ?? 0, items: [] } : null}
+            deliveryFee={live.deliveryFee}
+          />
         </Row>
         <Row>
           <div className="card options-card">
             <div className="option-row">
               <Icon name="card" size={20} color="var(--muted)" />
               <span className="t-body option-row__label">Payment method</span>
-              <span className="t-body-sm muted">{live ? live.payment : past!.payment}</span>
+              <span className="t-body-sm muted">{live.payment}</span>
             </div>
             <div className="option-row">
               <Icon name="receipt" size={20} color="var(--muted)" />

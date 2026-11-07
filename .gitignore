@@ -30,3 +30,6 @@ dist-ssr
 design/redesign.html
 .vercel
 .env*
+
+# Test coverage reports (npm run coverage)
+coverage

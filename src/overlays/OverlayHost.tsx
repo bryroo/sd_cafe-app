@@ -178,6 +178,7 @@ function OverlayContent({
 }) {
   const navigate = useNavigate()
   const app = useApp()
+  const { toast } = useOverlay()
   const { id, data } = current
 
   switch (id) {
@@ -496,11 +497,16 @@ function OverlayContent({
             <>
               <Button
                 variant="danger"
-                onClick={() => {
+                onClick={async () => {
                   close()
-                  deleteCustomerData()
-                  window.location.replace(window.location.pathname + '#/welcome?deleted=1')
-                  window.location.reload()
+                  try {
+                    // The cafe keeps anonymized order records; everything personal goes (SRS 3.8)
+                    await deleteCustomerData()
+                    window.location.replace(window.location.pathname + '#/welcome?deleted=1')
+                    window.location.reload()
+                  } catch (err) {
+                    toast(err instanceof Error ? err.message : "Couldn't delete your account. Try again.")
+                  }
                 }}
               >
                 Delete account
@@ -599,12 +605,16 @@ function DiscountsSheet({ close }: { close: () => void }) {
   const [code, setCode] = useState('')
   const [error, setError] = useState('')
   const applied = app.totals.offer?.code
-  const tier = member && app.useTierDiscount ? tierDiscount(app.cartTotal) : 0
-  const applyCode = () => {
-    // SRS FR-PRO-08: date window, minimum spend and usage limit (the server checks this in the full system)
-    const check = checkPromo(code, app.cartTotal, app.cartTotal - tier, app.promoUses)
+  const tier = member ? tierDiscount(app.cartTotal, app.tierPct) : 0
+  const [checking, setChecking] = useState(false)
+  const applyCode = async () => {
+    // SRS FR-PRO-08: the server knows the codes; date window, minimum spend and use are checked here,
+    // and again by the server when the order is placed
+    setChecking(true)
+    const check = await checkPromo(code, app.cartTotal, app.cartTotal - tier)
+    setChecking(false)
     if (!check.ok) return setError(check.error)
-    app.setAppliedPromo(check.promo.code)
+    app.setAppliedPromo(check.code)
     setCode('')
     setError('')
   }
@@ -615,7 +625,7 @@ function DiscountsSheet({ close }: { close: () => void }) {
     <Sheet title="Discounts and rewards" onClose={close}>
       <h3 className="t-h3">Automatic</h3>
       {member ? (
-        <DiscountRow amount={tierDiscount(app.cartTotal)} />
+        <DiscountRow amount={tierDiscount(app.cartTotal, app.tierPct)} />
       ) : (
         <p className="t-body-sm muted">Log in to get your Regular discount.</p>
       )}
@@ -688,10 +698,11 @@ function DiscountsSheet({ close }: { close: () => void }) {
           variant="secondary"
           height={48}
           full={false}
-          disabled={!code.trim() || !member}
+          disabled={!code.trim() || !member || checking}
           onClick={applyCode}
+          aria-busy={checking}
         >
-          Apply
+          {checking ? 'Checking…' : 'Apply'}
         </Button>
         </div>
       )}

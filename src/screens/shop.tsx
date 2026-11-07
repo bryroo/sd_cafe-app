@@ -65,11 +65,13 @@ export function LiveCartBar({ withNav = true }: { withNav?: boolean }) {
   return <CartBar count={cartCount} total={cartTotal} withNav={withNav} onClick={() => navigate('/cart')} />
 }
 
-/** The printed menu's three groups (Coffee, Non-Coffee, Food), each with its boards in board order. */
-const menuGroups = [...new Set(boards.map((b) => b.group))].map((group) => ({
-  group,
-  boards: boards.filter((b) => b.group === group),
-}))
+/** The printed menu's three groups (Coffee, Non-Coffee, Food), each with its boards in board order.
+ *  Worked out when used: the menu loads from the database after this file is imported. */
+const menuGroups = () =>
+  [...new Set(boards.map((b) => b.group))].map((group) => ({
+    group,
+    boards: boards.filter((b) => b.group === group),
+  }))
 
 /** Home's group tiles: a crop of the cafe's own photos showing what each group holds */
 const groupPhotos: Record<string, { photo: string; position: string }> = {
@@ -175,7 +177,7 @@ export function Home() {
 
         <Row>
           <nav className="category-strip category-strip--3" aria-label="Menu">
-            {menuGroups.map((g) => (
+            {menuGroups().map((g) => (
               <CategoryTile
                 key={g.group}
                 label={g.group}
@@ -258,7 +260,7 @@ export function Home() {
 
 /** The rail: Best Sellers first (what most people come for), then the printed menu's boards under
  *  their group. Oat Series appears on two boards, so the rail drops the suffix and the group says which. */
-const railSections = [
+const railSections = () => [
   { group: '', items: collections.filter((c) => c.id === 'best-sellers') },
   ...[...new Set(boards.map((b) => b.group))].map((group) => ({
     group,
@@ -278,7 +280,7 @@ export function Menu() {
   const { fulfillment, addresses, addressId, open: shop } = useApp()
   const online = useOnline()
   const address = addresses.find((a) => a.id === addressId)
-  const all = railSections.flatMap((g) => g.items)
+  const all = railSections().flatMap((g) => g.items)
   const [active, setActive] = useState<Section>(all[0].id)
   const listRef = useRef<HTMLDivElement>(null)
   const railRef = useRef<HTMLElement>(null)
@@ -347,7 +349,7 @@ export function Menu() {
       </div>
       <div className="menu-split__cols">
         <nav className="menu-rail" ref={railRef} aria-label="Menu sections">
-          {railSections.map((g) => (
+          {railSections().map((g) => (
             <div key={g.group || 'top'} className="menu-rail__group">
               {g.group && <span className="menu-rail__label">{g.group}</span>}
               {g.items.map((s) => (

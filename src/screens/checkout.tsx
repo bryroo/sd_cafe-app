@@ -17,7 +17,7 @@ import {
   lineName,
 } from '../components/order'
 import { etaLine, type CartLine } from '../state/shared'
-import { Button, Checkbox, Loader, TextField } from '../components/ui'
+import { Button, Loader, TextField } from '../components/ui'
 import { Icon } from '../components/Icon'
 import { Lamp } from '../components/Lamp'
 import { peso } from '../data/menu'
@@ -206,13 +206,15 @@ export function DeliveryAddress() {
 
   const [recipient, setRecipient] = useState(existing?.name ?? '')
   const [mobile, setMobile] = useState(existing?.phone ?? '')
-  const [street, setStreet] = useState(existing?.street.split(', ').slice(0, 2).join(', ') ?? '')
+  const [street, setStreet] = useState(existing?.street ?? '')
   const [landmark, setLandmark] = useState('')
   const [notes, setNotes] = useState(existing?.notes ?? '')
-  const [save, setSave] = useState(!!existing)
   const valid = recipient.trim() && mobile.trim() && street.trim()
+  const [busy, setBusy] = useState(false)
+  const [error, setError] = useState('')
 
-  const submit = () => {
+  // The order is delivered to an address saved on the account (the server reads it when ordering)
+  const submit = async () => {
     const a: Address = {
       id: existing?.id ?? `addr-${Date.now()}`,
       label: existing?.label ?? 'Other',
@@ -222,9 +224,17 @@ export function DeliveryAddress() {
       notes: notes.trim() || undefined,
       isDefault: existing?.isDefault,
     }
-    saveAddress(a)
-    setAddressId(a.id)
-    navigate(-1)
+    setBusy(true)
+    setError('')
+    try {
+      const savedId = await saveAddress(a)
+      setAddressId(savedId)
+      navigate(-1)
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Couldn't save the address. Try again.")
+    } finally {
+      setBusy(false)
+    }
   }
 
   return (
@@ -271,9 +281,10 @@ export function DeliveryAddress() {
               value={notes}
               onChange={setNotes}
             />
-            <Checkbox label="Save this address" checked={save} onChange={setSave} />
-            <Button disabled={!valid} onClick={submit}>
-              Save address
+            <p className="t-body-sm muted">Saved to your addresses, so you can pick it again next time.</p>
+            {error && <Alert tone="danger">{error}</Alert>}
+            <Button disabled={!valid || busy} onClick={submit} aria-busy={busy}>
+              {busy ? 'Saving…' : 'Save address'}
             </Button>
           </div>
         </Row>
@@ -301,7 +312,7 @@ export function Checkout() {
   const [paymentError, setPaymentError] = useState(false)
   const paymentRow = useRef<HTMLDivElement>(null)
   // One id per checkout: a retry or a double tap re-sends the same id and never makes a second order
-  const attempt = useRef(`attempt-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`)
+  const attempt = useRef(crypto.randomUUID())
   const address = addresses.find((a) => a.id === addressId)
   const blocked = !open.open || unavailableLines.length > 0
 
@@ -326,23 +337,52 @@ export function Checkout() {
       if (!go) return
     }
     setProcessing(true)
-    await new Promise((r) => setTimeout(r, 1400))
-    // Demo test cards (README): 0002 is always declined; 0119 is charged, then placing the order fails once
-    if (payment === DECLINED_CARD) {
-      setProcessing(false)
-      const again = await overlay.confirm('payment-declined')
-      if (again) return submit(true)
-      overlay.open('payment')
-      return
-    }
+    // Demo test card (README): 0119 shows the "order failed after payment" screen once; the retry
+    // re-sends the same attempt id, so it can never make a second order (IR-08)
     if (payment === FAILS_ONCE_CARD && !failedAttempts.has(attempt.current)) {
       failedAttempts.add(attempt.current)
+      await new Promise((r) => setTimeout(r, 1200))
       setProcessing(false)
       if (await overlay.confirm('order-failed')) return submit(true)
       return
     }
-    placeOrder(note, attempt.current)
-    navigate('/order-confirmation', { replace: true })
+    // The server prices the cart again and places the order (place-order Edge Function)
+    const r = await placeOrder(note, attempt.current)
+    if (r.ok) {
+      navigate('/order-confirmation', { replace: true })
+      return
+    }
+    setProcessing(false)
+    switch (r.code) {
+      // Test card 0002, or a real decline: nothing was charged (3.2.4.5)
+      case 'PAYMENT_DECLINED': {
+        if (await overlay.confirm('payment-declined')) return submit(true)
+        overlay.open('payment')
+        return
+      }
+      // A connection problem or a failure after payment: safe to retry with the same attempt id
+      case 'OFFLINE':
+      case 'ORDER_FAILED':
+      case 'FAILED': {
+        if (await overlay.confirm('order-failed')) return submit(true)
+        return
+      }
+      // Prices, offers, a code or a voucher changed: the new totals are on screen; say why (3.2.4.5)
+      case 'PROMO_INVALID':
+        app.setAppliedPromo(null)
+        overlay.toast(r.message)
+        return
+      case 'REWARD_INVALID':
+        app.setAppliedReward(null)
+        overlay.toast(r.message)
+        return
+      case 'SIGN_IN':
+        overlay.open('login-to-order')
+        return
+      default:
+        // TOTAL_CHANGED, STORE_CLOSED, ITEM_UNAVAILABLE, DELIVERY_OFF, ADDRESS, PAYMENT: the cart is kept
+        overlay.toast(r.message)
+    }
   }
 
   return (
