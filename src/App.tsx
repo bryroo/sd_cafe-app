@@ -77,13 +77,15 @@ function ScreenIndex() {
 /** FR-TRK-03: a new notification shows as a toast in the open app, and as a phone notification for the
  *  push events (Accepted, Ready, Delayed, Cancelled) when the customer allowed them. */
 function CustomerNotifier() {
-  const { notifications } = useShared()
+  const { notifications, ready } = useShared()
   const { notificationsOn, session } = useApp()
   const overlay = useOverlay()
   const navigate = useNavigate()
   const seen = useRef<Set<string> | null>(null)
 
   useEffect(() => {
+    // Messages already there when the account loads aren't new
+    if (!ready || session !== 'member') return
     if (!seen.current) {
       seen.current = new Set(notifications.map((n) => n.id))
       return
@@ -101,7 +103,7 @@ function CustomerNotifier() {
         /* some phones only allow notifications from an installed app */
       }
     }
-  }, [notifications, notificationsOn, session, overlay, navigate])
+  }, [notifications, notificationsOn, session, overlay, navigate, ready])
 
   return null
 }

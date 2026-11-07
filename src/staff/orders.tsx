@@ -448,7 +448,7 @@ export function OrderDetail() {
         <NoteSheet
           onClose={() => setSheet(null)}
           onSave={(text) => {
-            if (act(() => addInternalNote(o.number, text, staff.name), 'Note saved')) setSheet(null)
+            if (act(() => addInternalNote(o.number, text), 'Note saved')) setSheet(null)
           }}
         />
       )}
@@ -555,7 +555,6 @@ function NoteSheet({ onClose, onSave }: { onClose: () => void; onSave: (text: st
 /** Mark delayed with a new estimate (FR-STF-08) */
 function DelaySheet({ o, onClose }: { o: Order; onClose: () => void }) {
   const { act } = useStaff()
-  const { staff } = useShared()
   const [mins, setMins] = useState(10)
   const preview = messageFor(getShared(), 'delayed', o, { pickup_time: `${mins} min` })
   return (
@@ -567,7 +566,7 @@ function DelaySheet({ o, onClose }: { o: Order; onClose: () => void }) {
           <StaffButton
             disabled={!(mins > 0)}
             onClick={() => {
-              if (act(() => markDelayed(o.number, mins, staff.name), `Order #${o.number} marked delayed`)) onClose()
+              if (act(() => markDelayed(o.number, mins), `Order #${o.number} marked delayed`)) onClose()
             }}
           >
             Mark delayed

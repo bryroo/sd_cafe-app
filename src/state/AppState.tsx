@@ -1,16 +1,21 @@
 import { createContext, useContext, useEffect, useMemo, useState, type Dispatch, type ReactNode, type SetStateAction } from 'react'
 import { useLocation } from 'react-router-dom'
+import { computeTotals } from '../../supabase/functions/_shared/pricing'
 import { defaultOrder, productById } from '../data/menu'
-import { bestOffer, checkPromo, rewardById, rewardSavings, type MyReward } from '../data/rewards'
+import { automaticOffers, pricedCart, promoByCode, rewardById, type MyReward } from '../data/rewards'
+import { callFunction } from '../lib/supabase'
 import {
   COUNTER,
-  CUSTOMER_ID,
-  createOrder,
-  notesMatching,
+  addPaymentMethod as addCard,
+  customerLogout,
+  demoSetOrderState,
+  demoSignInCustomer,
   openState,
-  quietly,
   redeem,
+  reloadShared,
   sampleLines,
+  saveAddress as saveAddressRow,
+  saveProfile,
   setPoints,
   toIntlPhone,
   useShared,
@@ -31,9 +36,9 @@ export type Session = 'signed-out' | 'guest' | 'member'
 const lineKey = (l: Omit<CartLine, 'key'>) => [l.productId, ...l.options, l.note].join('|')
 
 /** C-31 Payment Methods row: label + status ("Default", "Linked"). */
-export type PaymentMethod = { label: string; status?: string }
+export type PaymentMethod = { label: string; status?: string; id?: string }
 
-/** An order as the customer sees it (staff-only fields are never rendered in the customer app) */
+/** An order as the customer sees it (staff-only fields are never loaded in the customer app) */
 export type PlacedOrder = Order
 
 /** The money in the cart, worked out once and shown the same in the cart, checkout and the order. */
@@ -43,16 +48,23 @@ export type Totals = {
   reward: { name: string; amount: number; items: { name: string; amount: number }[] } | null
   /** The order's one promotion: a promo code if one is applied, else the best automatic offer */
   offer: { name: string; amount: number; note: string; code?: string } | null
-  /** Regular 5% discount on the subtotal, applied first */
+  /** Regular discount on the subtotal, applied first and not removable (FR-CHK-05) */
   discount: number
   deliveryFee: number
   total: number
+  /** Points this order earns when Completed (AS-03) */
+  points: number
   /** Why an applied promo code no longer counts (the code row is dropped and a banner says why) */
   promoProblem?: string
 }
 
-/** Regular-tier discount: 5% of subtotal. */
-export const tierDiscount = (subtotal: number) => Math.round(subtotal * 0.05)
+/** What placing an order came back with: the order, or what the customer needs to know */
+export type PlaceResult =
+  | { ok: true; number: number }
+  | { ok: false; code: string; message: string }
+
+/** Tier discount on a subtotal, at the customer's tier (Regular 5% unless the cafe changes it) */
+export const tierDiscount = (subtotal: number, pct = 5) => Math.round((subtotal * pct) / 100)
 /** Spend this much to unlock a free drink (cart nudge). */
 export const FREE_DRINK_THRESHOLD = 500
 /** Drink sizes a customer can save as their default (FR-CRT-05) */
@@ -64,11 +76,12 @@ type AppState = {
   /** Set after sign up so Home shows its "First launch" state once. */
   firstLaunch: boolean
   setFirstLaunch: (v: boolean) => void
-  /** Phone number captured at sign up, shown on the verification screen. */
+  /** Phone number: the account's when signed in, the sign-up form's while signing up */
   phone: string
   setPhone: (v: string) => void
   name: string
   setName: (v: string) => void
+  email: string
 
   cart: CartLine[]
   cartCount: number
@@ -83,7 +96,7 @@ type AppState = {
 
   /** This customer's orders that are still in progress, newest first */
   activeOrders: Order[]
-  /** Every order this customer placed in the app, newest first */
+  /** Every order this customer placed, newest first */
   myOrders: Order[]
 
   promoDismissed: boolean
@@ -95,20 +108,21 @@ type AppState = {
   fulfillment: Fulfillment
   setFulfillment: (f: Fulfillment) => void
   addresses: Address[]
-  saveAddress: (a: Address) => void
+  /** Saves an address to the account; resolves to its id */
+  saveAddress: (a: Address) => Promise<string>
   addressId: string
   setAddressId: (id: string) => void
   payment: string
   setPayment: (p: string) => void
-  /** Whether the Regular tier discount is applied at checkout. */
+  /** The tier discount is always applied (FR-CHK-05: not removable) */
   useTierDiscount: boolean
   setUseTierDiscount: (v: boolean) => void
 
   /** The order placed last on this phone (confirmation, tracking) */
   lastOrder: Order | null
   setLastOrderNumber: (n: number | null) => void
-  /** Places the cart as an order; the same attempt id never makes a second order */
-  placeOrder: (note: string, attemptId: string) => Order
+  /** Places the cart as an order on the server; the same attempt id never makes a second order */
+  placeOrder: (note: string, attemptId: string) => Promise<PlaceResult>
 
   notificationsOn: boolean
   setNotificationsOn: (v: boolean) => void
@@ -119,12 +133,12 @@ type AppState = {
   setRemindersOn: (v: boolean) => void
 
   paymentMethods: PaymentMethod[]
-  addPaymentMethod: (m: PaymentMethod, makeDefault: boolean) => void
+  addPaymentMethod: (m: PaymentMethod, makeDefault: boolean) => Promise<void>
 
   points: number
   setPoints: (n: number) => void
   myRewards: MyReward[]
-  redeemReward: (rewardId: string, cost: number) => void
+  redeemReward: (rewardId: string, cost: number) => Promise<void>
   /** The redeemed reward chosen for this order (Discounts and rewards sheet) */
   appliedReward: string | null
   setAppliedReward: (id: string | null) => void
@@ -133,6 +147,9 @@ type AppState = {
   setAppliedPromo: (code: string | null) => void
   promoUses: string[]
   totals: Totals
+  /** The customer's tier name and discount (FR-TIR) */
+  tierName: string
+  tierPct: number
 
   /** Saved default drink size, preselected on product pages (FR-CRT-05) */
   defaultSize: string
@@ -146,17 +163,16 @@ type AppState = {
 
   /** Prototype helper: fill the cart with the 3 items shown in the Figma checkout frames. */
   seedCart: () => void
-  /** Prototype helper: make the sample order #1042 this phone's last order, in this state. */
+  /** Prototype helper: make the demo order #1042 this phone's last order, in this state. */
   seedDemoOrder: (f: Fulfillment, status?: OrderStatus) => void
 }
 
 const Ctx = createContext<AppState | null>(null)
 
-/* ----- Saved between visits (the demo has no backend, so the phone keeps its own state) ----- */
+/* ----- What stays on the phone: the cart (FR-CRT-09), choices in progress, UI preferences ----- */
 
 const STORE = 'megs.'
-// Prototype-only: ?demo=member or ?demo=cart starts signed in (and with the sample cart) so a
-// screen can be opened straight from a URL for review and screenshots. Those visits start fresh.
+// Prototype-only: ?demo=member or ?demo=cart signs in as the demo customer (and fills the sample cart)
 const demo = typeof window !== 'undefined' ? new URLSearchParams(window.location.search).get('demo') : null
 
 function usePersisted<T>(key: string, initial: T | (() => T)): [T, Dispatch<SetStateAction<T>>] {
@@ -181,7 +197,7 @@ function usePersisted<T>(key: string, initial: T | (() => T)): [T, Dispatch<SetS
   return [value, setValue]
 }
 
-/** Clears everything the demo saved on this device — customer, staff, store and orders — and starts again. */
+/** Clears what this device saved (cart, choices, cached data) and starts again. Server data is untouched. */
 export function resetDemo() {
   try {
     Object.keys(window.localStorage)
@@ -190,66 +206,75 @@ export function resetDemo() {
   } catch {
     /* nothing saved */
   }
-  window.location.replace(window.location.pathname + '#/')
-  window.location.reload()
+  void customerLogout().finally(() => {
+    window.location.replace(window.location.pathname + '#/')
+    window.location.reload()
+  })
 }
+
+const warn = (what: string) => (err: unknown) => console.warn(`MEGS: could not ${what}`, err)
 
 export function AppStateProvider({ children }: { children: ReactNode }) {
   const shared = useShared()
-  const [session, setSession] = usePersisted<Session>('session', demo ? 'member' : 'signed-out')
+  const { customer } = shared
+  const member = !!customer
+  // Guest or signed out, while no account is signed in
+  const [visitor, setVisitor] = usePersisted<'signed-out' | 'guest'>('session', 'signed-out')
+  const session: Session = member ? 'member' : visitor
   const [firstLaunch, setFirstLaunch] = usePersisted('firstLaunch', false)
-  const [phone, setPhone] = usePersisted('phone', '0917 123 4567')
-  const [name, setName] = usePersisted('name', 'Maria Santos')
+  // Sign-up form values until the account exists
+  const [draftPhone, setDraftPhone] = useState('')
+  const [draftName, setDraftName] = useState('')
   const [cart, setCart] = usePersisted<CartLine[]>('cart', demo === 'cart' ? sampleLines : [])
   // The member's cart while they're logged out, so logging back in picks the order up where they left it
   const [savedCart, setSavedCart] = usePersisted<CartLine[]>('savedCart', [])
   const [promoDismissed, setPromoDismissed] = usePersisted('promoDismissed', false)
   const [recentSearches, setRecentSearches] = usePersisted('recentSearches', ['Spanish Latte', 'Matcha', 'Carbonara', 'Hot Chocolate'])
   const [fulfillment, setFulfillment] = usePersisted<Fulfillment>('fulfillment', 'pickup')
-  const [addresses, setAddresses] = usePersisted<Address[]>('addresses', [
-    {
-      id: 'home',
-      label: 'Home',
-      name: 'Maria Santos',
-      street: '12 Mabini St, Brgy. San Roque, Quezon City',
-      phone: '+63 917 123 4567',
-      notes: 'Leave at the door',
-      isDefault: true,
-    },
-    {
-      id: 'work',
-      label: 'Work',
-      name: 'Maria Santos',
-      street: 'Unit 8B, Greenfield Tower, Mandaluyong City',
-      phone: '+63 917 123 4567',
-    },
-  ])
-  const [addressId, setAddressId] = usePersisted('addressId', 'home')
-  const [payment, setPayment] = usePersisted('payment', 'Pay at counter')
-  const [useTierDiscount, setUseTierDiscount] = usePersisted('useTierDiscount', true)
-  const [lastOrderNumber, setLastOrderNumber] = usePersisted<number | null>('lastOrderNumber', 1042)
-  const [notificationsOn, setNotificationsOn] = usePersisted('notificationsOn', false)
-  const [promoConsent, setPromoConsent] = usePersisted('promoConsent', false)
-  const [remindersOn, setRemindersOn] = usePersisted('remindersOn', true)
-  const [paymentMethods, setPaymentMethods] = usePersisted<PaymentMethod[]>('paymentMethods', [
-    { label: 'Card ending 4242', status: 'Default' },
-    // Test cards for the error states (see the README): 0002 always declines, 0119 fails once after payment
-    { label: 'Card ending 0002', status: 'Test · declines' },
-    { label: 'Card ending 0119', status: 'Test · order fails once' },
-    { label: 'E-wallet', status: 'Linked' },
-    { label: 'Pay at counter' },
-  ])
+  const [addressId, setAddressId] = usePersisted('addressId', '')
+  const [payment, setPayment] = usePersisted('payment', COUNTER)
+  const [lastOrderNumber, setLastOrderNumber] = usePersisted<number | null>('lastOrderNumber', null)
   const [appliedReward, setAppliedReward] = usePersisted<string | null>('appliedReward', null)
   const [appliedPromo, setAppliedPromo] = usePersisted<string | null>('appliedPromo', null)
-  const [defaultSize, setDefaultSize] = usePersisted('defaultSize', '')
 
-  const { store, orders, points, myRewards, promoUses } = shared
+  // ?demo=member / ?demo=cart: sign in as the demo customer
+  useEffect(() => {
+    if (demo && !member && shared.ready) void demoSignInCustomer()
+  }, [member, shared.ready])
+
+  const { store, orders, points, myRewards, promoUses, addresses } = shared
   // `?closed=1` shows the closed state for the screen index without touching the cafe's settings
   const previewClosed = new URLSearchParams(useLocation().search).get('closed') === '1'
   const open = useMemo(
     () => openState(previewClosed ? { ...store, hours: store.hours.map((h) => ({ ...h, closed: true })) } : store),
     [store, previewClosed],
   )
+
+  const paymentMethods = useMemo<PaymentMethod[]>(
+    () => [
+      ...shared.paymentMethods.map((m) => ({
+        id: m.id,
+        label: m.label,
+        // README test cards: 0002 always declines; 0119 fails once after payment
+        status: m.token.startsWith('tok_test_0002')
+          ? 'Test · declines'
+          : m.token.startsWith('tok_test_0119')
+            ? 'Test · order fails once'
+            : m.isDefault
+              ? 'Default'
+              : m.type === 'e_wallet'
+                ? 'Linked'
+                : undefined,
+      })),
+      { label: COUNTER },
+    ],
+    [shared.paymentMethods],
+  )
+
+  // The default address is preselected for delivery
+  useEffect(() => {
+    if (addresses.length && !addresses.some((a) => a.id === addressId)) setAddressId((addresses.find((a) => a.isDefault) ?? addresses[0]).id)
+  }, [addresses, addressId, setAddressId])
 
   // Delivery can't be paid at the counter: move to the first other method
   useEffect(() => {
@@ -262,6 +287,8 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     if (!store.deliveryEnabled && fulfillment === 'delivery') setFulfillment('pickup')
   }, [store.deliveryEnabled, fulfillment, setFulfillment])
+
+  const tier = shared.tiers.find((t) => t.id === customer?.tierId) ?? shared.tiers.find((t) => t.isDefault)
 
   const value = useMemo<AppState>(() => {
     const addToCart: AppState['addToCart'] = (line) =>
@@ -284,95 +311,102 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
         return prev.map((l) => (l.key === oldKey ? { ...line, key } : l))
       })
 
-    const member = session === 'member'
-    const subtotal = cart.reduce((n, l) => n + l.qty * l.unitPrice, 0)
-
-    // SRS AS-05 / FR-CHK-04: the tier discount first (on the subtotal), then one promotion, then one
-    // reward. A promo code is the order's promotion when applied; otherwise the best automatic offer.
-    // The reward makes its item(s) free; the offer skips units the reward already covers.
-    const discount = useTierDiscount && member ? tierDiscount(subtotal) : 0
+    // SRS AS-05 / FR-CHK-04 through the shared pricing engine (the same code the server charges with):
+    // the tier discount first, then one promotion, then one reward.
     const usable = appliedReward && myRewards.some((m) => m.rewardId === appliedReward && m.status === 'Redeemed')
     const def = usable && member ? rewardById(appliedReward!) : undefined
-    const saved = def ? rewardSavings(def, cart) : null
-    const reward = def && saved?.applies ? { name: def.name, amount: saved.amount, items: saved.items } : null
-    let offer: Totals['offer'] = null
-    let promoProblem: string | undefined
-    if (appliedPromo && member && cart.length) {
-      const check = checkPromo(appliedPromo, subtotal, subtotal - discount, promoUses)
-      if (check.ok) offer = { name: check.promo.label, amount: check.amount, note: `${check.promo.percent}% off`, code: check.promo.code }
-      else promoProblem = `${appliedPromo} was removed: ${check.error}`
+    const promo = member ? promoByCode(appliedPromo) : null
+    const lines = pricedCart(cart)
+    const t = computeTotals({
+      lines,
+      member,
+      tier: tier ? { name: tier.name, pct: tier.pct } : null,
+      offers: automaticOffers(),
+      usedOfferIds: promoUses,
+      isFirstOrder: member && !orders.some((o) => o.status !== 'Cancelled'),
+      promo,
+      reward: def ? { id: def.id, name: def.name, slots: def.slots } : null,
+      fulfillment,
+      deliveryFee: store.deliveryFee,
+      pointsPerPeso: store.pointsPerPeso,
+      now: Date.now(),
+    })
+    const totals: Totals = {
+      subtotal: t.subtotal,
+      discount: t.discount,
+      reward: t.reward,
+      offer: t.offer,
+      deliveryFee: t.deliveryFee,
+      total: t.total,
+      points: t.points,
+      promoProblem: appliedPromo && member && !promo ? `${appliedPromo} was removed: open Discounts to apply it again.` : t.promoProblem,
     }
-    if (!offer) {
-      const best = bestOffer(cart, reward?.items.map((i) => i.key) ?? [])
-      offer = best ? { name: best.promo.title, amount: best.amount, note: best.note } : null
-    }
-    const deliveryFee = fulfillment === 'delivery' ? store.deliveryFee : 0
-    const total = Math.max(0, subtotal - discount - (offer?.amount ?? 0) - (reward?.amount ?? 0)) + deliveryFee
-    const totals: Totals = { subtotal, reward, offer, discount, deliveryFee, total, promoProblem }
 
-    const mine = orders.filter((o) => o.customerId === CUSTOMER_ID).sort((a, b) => b.placedAt - a.placedAt)
+    const mine = [...orders].sort((a, b) => b.placedAt - a.placedAt)
     const lastOrder = mine.find((o) => o.number === lastOrderNumber) ?? null
 
-    const placeOrder: AppState['placeOrder'] = (note, attemptId) => {
-      const order = createOrder(
-        {
-          customerId: CUSTOMER_ID,
-          customerName: name,
-          customerPhone: toIntlPhone(phone),
-          fulfillment,
-          address: fulfillment === 'delivery' ? addresses.find((a) => a.id === addressId) : undefined,
-          lines: cart,
-          note: note.trim() || undefined,
-          subtotal,
-          discount,
-          deliveryFee,
-          total,
-          payment,
-          points: Math.floor(total), // SRS AS-03: 1 pt per ₱1 paid, credited on Completed
-          rewardId: reward ? appliedReward! : undefined,
-          rewardName: reward?.name,
-          rewardDiscount: reward?.amount,
-          offerName: offer?.name,
-          offerDiscount: offer?.amount,
-          promoCode: offer?.code,
-          source: 'app',
-        },
-        attemptId,
-      )
-      if (reward) setAppliedReward(null)
-      if (offer?.code) setAppliedPromo(null)
-      setLastOrderNumber(order.number)
+    const placeOrder: AppState['placeOrder'] = async (note, attemptId) => {
+      const method = paymentMethods.find((m) => m.label === payment)
+      const voucher = def ? myRewards.find((m) => m.rewardId === def.id && m.status === 'Redeemed')?.voucherId : undefined
+      const { data, error } = await callFunction<{ order: { number: number } }>('place-order', {
+        idempotencyKey: attemptId,
+        lines: cart.map((l) => ({ key: l.key, itemId: l.productId, options: l.options, qty: l.qty, note: l.note })),
+        fulfillment,
+        addressId: fulfillment === 'delivery' ? addressId : null,
+        note: note.trim(),
+        payment: payment === COUNTER || !method?.id ? 'counter' : method.id,
+        promoCode: t.offer?.code ?? null,
+        customerRewardId: t.reward ? voucher ?? null : null,
+        expectedTotal: t.total,
+      })
+      if (error) return { ok: false, code: error.code, message: error.message }
+      const number = data.order.number
+      if (t.reward) setAppliedReward(null)
+      if (t.offer?.code) setAppliedPromo(null)
+      setLastOrderNumber(number)
       setCart([])
       setFirstLaunch(false)
-      return order
+      await reloadShared()
+      return { ok: true, number }
     }
 
     // Logging out keeps the member's cart for this account (not for a guest using the phone);
     // logging back in brings it back, unless they've started a new cart since.
     const changeSession = (next: Session) => {
-      if (next === 'signed-out' && session === 'member') {
+      if (next === 'signed-out' && member) {
         if (cart.length) setSavedCart(cart)
         setCart([])
+        setVisitor('signed-out')
+        void customerLogout()
+        return
       }
-      if (next === 'member' && session !== 'member' && savedCart.length) {
-        setCart((prev) => (prev.length ? prev : savedCart))
-        setSavedCart([])
+      if (next === 'member') {
+        // Sign-in itself happens on Log in / Verification; the screen index signs in as the demo customer
+        if (!member) void demoSignInCustomer()
+        if (savedCart.length) {
+          setCart((prev) => (prev.length ? prev : savedCart))
+          setSavedCart([])
+        }
+        return
       }
-      setSession(next)
+      setVisitor(next)
     }
+
+    const setProfile = (patch: Parameters<typeof saveProfile>[0]) => void saveProfile(patch).catch(warn('save your profile'))
 
     return {
       session,
       setSession: changeSession,
       firstLaunch,
       setFirstLaunch,
-      phone,
-      setPhone,
-      name,
-      setName,
+      phone: customer ? toIntlPhone(customer.mobile) : draftPhone,
+      setPhone: setDraftPhone,
+      name: customer?.name ?? draftName,
+      setName: (v) => (member ? setProfile({ full_name: v }) : setDraftName(v)),
+      email: customer?.email ?? '',
       cart,
       cartCount: cart.reduce((n, l) => n + l.qty, 0),
-      cartTotal: subtotal,
+      cartTotal: t.subtotal,
       addToCart,
       updateLine,
       setQty: (key, qty) =>
@@ -390,35 +424,32 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
       fulfillment,
       setFulfillment,
       addresses,
-      saveAddress: (a) =>
-        setAddresses((prev) => (prev.some((x) => x.id === a.id) ? prev.map((x) => (x.id === a.id ? a : x)) : [...prev, a])),
+      saveAddress: async (a) => {
+        const id = await saveAddressRow(a)
+        return id
+      },
       addressId,
       setAddressId,
       payment,
       setPayment,
-      useTierDiscount,
-      setUseTierDiscount,
+      useTierDiscount: true,
+      setUseTierDiscount: () => {},
       lastOrder,
       setLastOrderNumber,
       placeOrder,
-      notificationsOn,
-      setNotificationsOn,
-      promoConsent,
-      setPromoConsent,
-      remindersOn,
-      setRemindersOn,
+      notificationsOn: customer?.notifyOrders ?? false,
+      setNotificationsOn: (v) => setProfile({ notify_order_updates: v }),
+      promoConsent: customer?.notifyPromotions ?? false,
+      setPromoConsent: (v) => setProfile({ notify_promotions: v }),
+      remindersOn: customer?.notifyRewards ?? true,
+      setRemindersOn: (v) => setProfile({ notify_rewards_reminders: v }),
       paymentMethods,
-      addPaymentMethod: (m, makeDefault) =>
-        setPaymentMethods((prev) => {
-          const rest = makeDefault
-            ? prev.map((p) => (p.status === 'Default' ? { ...p, status: undefined } : p))
-            : prev
-          const card = { ...m, status: makeDefault ? 'Default' : m.status }
-          // Cards first, "Pay at counter" stays last.
-          return [card, ...rest.filter((p) => p.label !== m.label)]
-        }),
+      addPaymentMethod: async (m, makeDefault) => {
+        const last4 = m.label.replace(/\D/g, '').slice(-4)
+        await addCard(last4, makeDefault)
+      },
       points,
-      setPoints: (n) => setPoints(n),
+      setPoints: (n) => void setPoints(n).catch(warn('set points')),
       myRewards,
       appliedReward,
       setAppliedReward,
@@ -426,37 +457,19 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
       setAppliedPromo,
       promoUses,
       totals,
-      redeemReward: (rewardId, cost) => redeem(rewardId, cost, rewardById(rewardId)?.name ?? 'Reward'),
-      defaultSize,
-      setDefaultSize,
+      tierName: tier?.name ?? 'Regular',
+      tierPct: tier?.pct ?? 5,
+      redeemReward: (rewardId) => redeem(rewardId),
+      defaultSize: customer?.defaultSize ?? '',
+      setDefaultSize: (s) => setProfile({ default_drink_size: s || null }),
       open,
       deliveryEnabled: store.deliveryEnabled,
       deliveryFee: store.deliveryFee,
       prepMinutes: store.prepMinutes,
       seedCart: () => setCart(sampleLines),
       seedDemoOrder: (f, status = 'Preparing') => {
-        // The sample order #1042 in the shared queue, in the shape a screen-index frame needs
-        quietly((s) => {
-          const o = s.orders.find((x) => x.number === 1042)
-          if (!o) return {}
-          const fee = f === 'delivery' ? s.store.deliveryFee : 0
-          const next: Order = {
-            ...o,
-            customerId: CUSTOMER_ID,
-            fulfillment: f,
-            address: f === 'delivery' ? addresses[0] : undefined,
-            deliveryFee: fee,
-            total: o.subtotal - o.discount + fee,
-            status,
-            isDelayed: false,
-            cancelReason: status === 'Cancelled' ? 'Out of stock' : undefined,
-            cancelledBy: status === 'Cancelled' ? 'cafe' : undefined,
-          }
-          return {
-            orders: s.orders.map((x) => (x.number === 1042 ? next : x)),
-            notifications: notesMatching(s.notifications, 1042, status),
-          }
-        })
+        // The demo order #1042 in the shared queue, in the state a screen-index frame needs
+        void demoSetOrderState(1042, status, f).catch(warn('set the demo order'))
         setLastOrderNumber(1042)
       },
     }
@@ -466,49 +479,38 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
     points,
     myRewards,
     promoUses,
+    addresses,
     open,
     paymentMethods,
     appliedReward,
     appliedPromo,
-    notificationsOn,
-    promoConsent,
-    remindersOn,
     session,
+    member,
+    customer,
+    tier,
     firstLaunch,
-    phone,
-    name,
+    draftPhone,
+    draftName,
     cart,
     savedCart,
     promoDismissed,
     recentSearches,
     fulfillment,
-    addresses,
     addressId,
     payment,
-    useTierDiscount,
     lastOrderNumber,
-    defaultSize,
-    setSession,
+    setVisitor,
     setFirstLaunch,
-    setPhone,
-    setName,
     setCart,
     setSavedCart,
     setPromoDismissed,
     setRecentSearches,
     setFulfillment,
-    setAddresses,
     setAddressId,
     setPayment,
-    setUseTierDiscount,
     setLastOrderNumber,
-    setNotificationsOn,
-    setPromoConsent,
-    setRemindersOn,
-    setPaymentMethods,
     setAppliedReward,
     setAppliedPromo,
-    setDefaultSize,
   ])
 
   return <Ctx.Provider value={value}>{children}</Ctx.Provider>
@@ -527,4 +529,3 @@ export function quickAddLine(productId: string): Omit<CartLine, 'key'> {
 
 /** "0917 123 4567" → "+63 917 123 4567" */
 export const toIntl = toIntlPhone
-

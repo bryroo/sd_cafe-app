@@ -104,7 +104,7 @@ export function Automations() {
 export function AutomationDetail() {
   const { id = '' } = useParams()
   const [params, setParams] = useSearchParams()
-  const { automations, staff } = useShared()
+  const { automations } = useShared()
   const { go, act, online } = useStaff()
   const a = automations.find((x) => x.id === id)
   const sheet = params.get('sheet')
@@ -147,7 +147,7 @@ export function AutomationDetail() {
             <StaffButton
               variant="secondary"
               disabled={!online}
-              onClick={() => act(() => convertAutomation(a.id, staff.name), 'Converted to a manual order')}
+              onClick={() => act(() => convertAutomation(a.id), 'Converted to a manual order')}
             >
               Convert to manual order
             </StaffButton>

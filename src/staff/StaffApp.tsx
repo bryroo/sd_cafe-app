@@ -53,7 +53,7 @@ export function StaffApp() {
   const online = useOnline()
   const [now, setNow] = useState(Date.now())
   const [toast, setToast] = useState<{ text: string; action?: { label: string; onClick: () => void }; id: number } | null>(null)
-  const [error, setError] = useState<{ retry: () => void } | null>(null)
+  const [error, setError] = useState<{ retry: () => void; message?: string } | null>(null)
   const [pending, setPending] = useState<string | null>(null)
   const [confirmOff, setConfirmOff] = useState(false)
   const dirty = useRef(false)
@@ -78,6 +78,8 @@ export function StaffApp() {
 
   // FR-STF-04: a new order slides in, highlighted for 2 s, with an optional chime
   useEffect(() => {
+    // Only once the queue has loaded: the orders already there aren't "new"
+    if (!shared.ready || !shared.staff.signedIn) return
     const numbers = shared.orders.map((o) => o.number)
     if (!known.current) {
       known.current = new Set(numbers)
@@ -96,7 +98,7 @@ export function StaffApp() {
       setFreshTick((x) => x + 1)
     }, 2000)
     return () => clearTimeout(t)
-  }, [shared.orders, shared.store.chime, shared.staff.signedIn])
+  }, [shared.orders, shared.store.chime, shared.staff.signedIn, shared.ready])
 
   const go = useCallback(
     (to: string) => {
@@ -110,14 +112,28 @@ export function StaffApp() {
     () => ({
       toast: (text, action) => setToast({ text, action, id: Date.now() }),
       act: (write, success) => {
+        const failed = (err: unknown) => {
+          console.warn('MEGS staff: update failed', err)
+          setError({ retry: () => api.act(write, success), message: err instanceof Error ? err.message : undefined })
+        }
         try {
-          write()
+          const result = write()
+          // Database writes are async: the toast waits for the answer; a refusal shows the error with Retry
+          if (result instanceof Promise) {
+            result.then(
+              () => {
+                setError(null)
+                if (success) setToast({ text: success, id: Date.now() })
+              },
+              failed,
+            )
+            return true
+          }
           setError(null)
           if (success) setToast({ text: success, id: Date.now() })
           return true
         } catch (err) {
-          console.warn('MEGS staff: update failed', err)
-          setError({ retry: () => api.act(write, success) })
+          failed(err)
           return false
         }
       },
@@ -140,6 +156,8 @@ export function StaffApp() {
   }, [])
 
   const path = location.pathname
+  // Wait for a saved session to load before sending anyone to the sign-in screen
+  if (!shared.ready && !shared.staff.signedIn) return <div className="staff staff--login" aria-busy="true" />
   if (!shared.staff.signedIn && path !== '/staff/login') return <Navigate to="/staff/login" replace />
   if (path === '/staff/login')
     return (
@@ -230,7 +248,11 @@ export function StaffApp() {
           {error && (
             <div className="st-banner st-banner--error" role="alert">
               <Icon name="alert" size={20} />
-              <span className="t-body-sm">Couldn't update. Try again. Nothing was changed.</span>
+              <span className="t-body-sm">
+                {error.message && !/Couldn't update|Simulated/.test(error.message)
+                  ? `${error.message} Nothing was changed.`
+                  : "Couldn't update. Try again. Nothing was changed."}
+              </span>
               <StaffButton small variant="secondary" onClick={error.retry}>
                 Retry
               </StaffButton>

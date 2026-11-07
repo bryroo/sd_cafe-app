@@ -23,7 +23,7 @@ export function formatOptions(options: string[]) {
     .join(' · ')
 }
 
-export const lineName = (l: CartLine) => productById(l.productId)?.name ?? 'Item'
+export const lineName = (l: CartLine) => l.name ?? productById(l.productId)?.name ?? 'Item'
 
 const fulfillmentIcon = (f: Fulfillment): IconName => (f === 'delivery' ? 'truck' : 'store')
 

@@ -1,58 +1,14 @@
-// Menu catalogue, read from the cafe's data sheet (data-sheet/*.csv) at build time.
-// The sheet is the source of truth: edit the CSVs, not this file.
-import productsCsv from '../../data-sheet/products.csv?raw'
-import sectionsCsv from '../../data-sheet/sections.csv?raw'
-import groupsCsv from '../../data-sheet/option_groups.csv?raw'
-import choicesCsv from '../../data-sheet/option_choices.csv?raw'
+// Menu catalogue (SRS MENU_CATEGORY, MENU_ITEM, OPTION_GROUP, OPTION_VALUE), loaded from the database
+// by src/data/catalog.ts before the app renders and kept live (FR-OPS-04: sold-out reaches customers).
+// The exports keep the shapes the screens have always used; the arrays are filled in place.
+import { defaultOptions, peso as pesoFormat, type Group, type Item } from '../../supabase/functions/_shared/pricing'
 
-// Menu photos made by scripts/menu-photos.mjs; the sheet's image column names the file.
+// Menu photos made by scripts/menu-photos.mjs; the database's image_url names the file.
 const photoUrls = Object.fromEntries(
   Object.entries(
     import.meta.glob<string>('../assets/menu/*.webp', { eager: true, query: '?url', import: 'default' }),
   ).map(([path, url]) => [path.split('/').pop()!, url]),
 )
-
-/* ----- CSV ----- */
-
-type Row = Record<string, string>
-
-/** Parses a comma-separated sheet with a header row; handles quoted cells and a UTF-8 BOM. */
-function parseCsv(text: string): Row[] {
-  const rows: string[][] = []
-  let row: string[] = []
-  let cell = ''
-  let quoted = false
-  const src = text.replace(/^\uFEFF/, '')
-  for (let i = 0; i < src.length; i++) {
-    const ch = src[i]
-    if (quoted) {
-      if (ch === '"' && src[i + 1] === '"') {
-        cell += '"'
-        i++
-      } else if (ch === '"') quoted = false
-      else cell += ch
-    } else if (ch === '"') quoted = true
-    else if (ch === ',') {
-      row.push(cell)
-      cell = ''
-    } else if (ch === '\n' || ch === '\r') {
-      if (ch === '\r' && src[i + 1] === '\n') i++
-      row.push(cell)
-      if (row.some((c) => c.trim())) rows.push(row)
-      row = []
-      cell = ''
-    } else cell += ch
-  }
-  row.push(cell)
-  if (row.some((c) => c.trim())) rows.push(row)
-  const [head, ...body] = rows
-  return body.map((r) => Object.fromEntries(head.map((h, i) => [h.trim(), (r[i] ?? '').trim()])))
-}
-
-const yes = (v: string) => v.toLowerCase() === 'yes'
-const num = (v: string) => (v === '' ? undefined : Number(v))
-const list = (v: string) => v.split(',').map((s) => s.trim()).filter(Boolean)
-const bySort = (a: Row, b: Row) => Number(a.sort_order) - Number(b.sort_order)
 
 /* ----- Sections ----- */
 
@@ -69,17 +25,11 @@ export type SectionInfo = {
   badge?: string
 }
 
-export const sections: SectionInfo[] = parseCsv(sectionsCsv)
-  .sort(bySort)
-  .map((r) => {
-    const badge = r.kind.match(/badge includes (.+)$/)?.[1]
-    return { id: r.id, title: r.title, tab: r.title, group: r.menu_group, badge }
-  })
-
+export const sections: SectionInfo[] = []
 /** The printed menu's boards, in order (collections excluded). */
-export const boards = sections.filter((s) => !s.badge)
-/** Best Sellers, Must-Try, Kids' Favorites: built from the badge column. */
-export const collections = sections.filter((s) => s.badge)
+export const boards: SectionInfo[] = []
+/** Best Sellers, Must-Try, Kids' Favorites: built from the badges. */
+export const collections: SectionInfo[] = []
 
 /* ----- Products ----- */
 
@@ -108,58 +58,106 @@ export type Product = {
   /** Drink sizes with their own prices, cheapest first. */
   sizes: Size[]
   available: boolean
+  /** Why staff marked it sold out (FR-OPS-04) */
+  unavailableReason?: string
   /** Menu photo URL; items without one show a placeholder tile. */
   image?: string
-  /** The raw sheet row, for the option rules in option_groups.csv. */
-  row: Row
+  /** The item's option groups, as the pricing engine reads them */
+  groups: Group[]
 }
 
-const choiceRows = parseCsv(choicesCsv).sort(bySort)
-const sizeChoices = choiceRows.filter((c) => c.group === 'size')
+export const products: Product[] = []
 
-function toProduct(r: Row): Product {
-  const sizes = sizeChoices
-    .map((c) => ({ label: c.label, price: num(r[c.price_from] ?? '') }))
-    .filter((s): s is Size => s.price !== undefined)
-  const prices = sizes.length ? sizes.map((s) => s.price) : [num(r.price) ?? 0]
+/* ----- Loading (rows from the database) ----- */
+
+export type CategoryRow = { category_id: string; title: string; menu_group: string | null; kind: 'board' | 'collection'; badge_match: string | null; sort_order: number }
+export type ItemRow = {
+  item_id: string
+  category_id: string
+  kind: 'drink' | 'food'
+  name: string
+  description: string
+  blurb: string | null
+  badges: string[]
+  image_url: string | null
+  price: number | null
+  is_new: boolean
+  is_available: boolean
+  unavailable_reason: string | null
+  sort_order: number
+  option_group: {
+    code: string
+    title: string
+    is_required: boolean
+    pick: 'one' | 'many'
+    is_size: boolean
+    sort_order: number
+    option_value: { value_id: number; label: string; price: number; badge: string | null; is_default: boolean; is_available: boolean; sort_order: number }[]
+  }[]
+}
+
+const bySort = <T extends { sort_order: number }>(a: T, b: T) => a.sort_order - b.sort_order
+const fill = <T,>(arr: T[], items: T[]) => arr.splice(0, arr.length, ...items)
+
+function toProduct(r: ItemRow): Product {
+  const groups: Group[] = [...r.option_group].sort(bySort).map((g) => ({
+    code: g.code,
+    title: g.title,
+    required: g.is_required,
+    pick: g.pick,
+    isSize: g.is_size,
+    choices: [...g.option_value].sort(bySort).map((v) => ({
+      valueId: v.value_id,
+      label: v.label,
+      price: v.price / 100,
+      available: v.is_available,
+      isDefault: v.is_default,
+      badge: v.badge ?? undefined,
+    })),
+  }))
+  const sizeGroup = groups.find((g) => g.isSize)
+  const sizes = (sizeGroup?.choices ?? []).map((c) => ({ label: c.label, price: c.price }))
+  const prices = sizes.length ? sizes.map((s) => s.price) : [(r.price ?? 0) / 100]
   const temps: ('Hot' | 'Iced')[] = []
   if (sizes.some((s) => s.label.startsWith('Cold'))) temps.push('Iced')
   if (sizes.some((s) => s.label.startsWith('Hot'))) temps.push('Hot')
-  const badges = list(r.badge)
-  const kind = r.kind === 'food' ? 'food' : 'drink'
   const sizeLine = temps.length === 2 ? 'Cold or hot' : temps[0] === 'Hot' ? 'Hot only' : temps.length ? 'Cold only' : ''
   return {
-    id: r.id,
+    id: r.item_id,
     name: r.name,
     blurb: r.blurb || r.description || sizeLine,
     description: r.description,
     price: Math.min(...prices),
     priceMax: Math.max(...prices),
-    badges,
-    badge: badges[0],
-    isNew: yes(r.is_new),
-    section: r.section,
-    kind,
-    temps: kind === 'drink' ? temps : undefined,
+    badges: r.badges,
+    badge: r.badges[0],
+    isNew: r.is_new,
+    section: r.category_id,
+    kind: r.kind,
+    temps: r.kind === 'drink' ? temps : undefined,
     sizes: [...sizes].sort((a, b) => a.price - b.price),
-    available: yes(r.is_available),
-    image: photoUrls[r.image],
-    row: r,
+    available: r.is_available,
+    unavailableReason: r.unavailable_reason ?? undefined,
+    image: r.image_url ? photoUrls[r.image_url] : undefined,
+    groups,
   }
 }
 
-export const products: Product[] = parseCsv(productsCsv)
-  .filter((r) => yes(r.is_active))
-  .sort(bySort)
-  .map(toProduct)
-
-/** Availability as printed on the sheet, before staff mark anything sold out */
-const sheetAvailable = new Map(products.map((p) => [p.id, p.available]))
-
-/** SRS FR-OPS-04: staff overrides (A-10 Item availability) laid over the sheet. Called by the shared
- *  store whenever its settings change, so every screen reads `product.available` as it is right now. */
-export function applyAvailability(overrides: Record<string, { available: boolean }>) {
-  for (const p of products) p.available = overrides[p.id]?.available ?? sheetAvailable.get(p.id) ?? true
+/** Replaces the menu with fresh rows (start-up, and whenever staff change availability) */
+export function setMenu(categories: CategoryRow[], items: ItemRow[]) {
+  fill(
+    sections,
+    [...categories].sort(bySort).map((c) => ({
+      id: c.category_id,
+      title: c.title,
+      tab: c.title,
+      group: c.menu_group ?? '',
+      badge: c.kind === 'collection' ? c.badge_match ?? undefined : undefined,
+    })),
+  )
+  fill(boards, sections.filter((s) => !s.badge))
+  fill(collections, sections.filter((s) => s.badge))
+  fill(products, [...items].sort(bySort).map(toProduct))
 }
 
 export const productById = (id: string) => products.find((p) => p.id === id)
@@ -172,6 +170,18 @@ export const productsIn = (id: Section) => {
   return s?.badge ? products.filter((p) => p.badges.includes(s.badge!)) : products.filter((p) => p.section === id)
 }
 
+/** The item in the shape the pricing engine reads */
+export const toPricingItem = (p: Product): Item => ({
+  id: p.id,
+  name: p.name,
+  kind: p.kind,
+  category: p.section,
+  price: p.sizes.length ? null : p.price,
+  available: p.available,
+  active: true,
+  groups: p.groups,
+})
+
 /* ----- Options (C-13 Product Detail) ----- */
 
 export type Choice = { label: string; delta: number; badge?: string; isDefault?: boolean }
@@ -183,35 +193,27 @@ export type OptionGroup = {
   choices: Choice[]
 }
 
-const groupRows = parseCsv(groupsCsv).sort(bySort)
-
-/** "section=pastas|snacks" → the product's section column is one of those values. */
-const applies = (rule: string, p: Product) => {
-  const [col, values] = rule.split('=')
-  return !!values && values.split('|').includes(p.row[col.trim()] ?? '')
-}
-
-/** The option groups a product shows, in sheet order. Size prices become deltas over the item's lowest price. */
+/** The option groups a product shows, in menu order. Size prices become deltas over the item's lowest price. */
 export function optionGroupsFor(p: Product): OptionGroup[] {
-  return groupRows
-    .filter((g) => applies(g.applies_to, p))
-    .map((g) => {
-      const choices: Choice[] =
-        g.id === 'size'
-          ? p.sizes.map((s) => ({
-              label: s.label,
-              delta: s.price - p.price,
-              isDefault: sizeChoices.find((c) => c.label === s.label)?.is_default === 'yes',
-            }))
-          : choiceRows
-              .filter((c) => c.group === g.id && yes(c.is_available))
-              .map((c) => ({ label: c.label, delta: num(c.price_add) ?? 0, badge: c.badge || undefined, isDefault: yes(c.is_default) }))
-      return { id: g.id, title: g.title, required: yes(g.required), pick: (g.pick === 'many' ? 'many' : 'one') as OptionGroup['pick'], choices }
-    })
+  return p.groups
+    .map((g) => ({
+      id: g.code,
+      title: g.title,
+      required: g.required,
+      pick: g.pick,
+      choices: g.choices
+        .filter((c) => c.available)
+        .map((c) => ({
+          label: c.label,
+          delta: g.isSize ? c.price - p.price : c.price,
+          badge: c.badge,
+          isDefault: c.isDefault,
+        })),
+    }))
     .filter((g) => g.choices.length > 0)
 }
 
-/** Default pick in a one-choice group: the sheet's default, else the cheapest (first on a tie). */
+/** Default pick in a one-choice group: the menu's default, else the cheapest (first on a tie). */
 export function defaultChoice(g: OptionGroup) {
   const marked = g.choices.findIndex((c) => c.isDefault)
   if (marked >= 0) return marked
@@ -221,20 +223,14 @@ export function defaultChoice(g: OptionGroup) {
 
 /** The item as it comes by default: default choices picked, no add-ons. */
 export function defaultOrder(productId: string) {
-  const p = productById(productId)!
-  const options = optionGroupsFor(p)
-    .filter((g) => g.pick === 'one')
-    .map((g) => g.choices[defaultChoice(g)])
-  return {
-    productId,
-    options: options.map((c) => c.label),
-    unitPrice: p.price + options.reduce((s, c) => s + c.delta, 0),
-  }
+  const p = productById(productId)
+  if (!p) return { productId, options: [] as string[], unitPrice: 0 }
+  const options = defaultOptions(toPricingItem(p))
+  return { productId, options, unitPrice: priceFor(productId, options) ?? p.price }
 }
 
 // SRS 2.4: Philippine peso, tax-inclusive, 2 decimal places
-export const peso = (n: number) =>
-  `₱${n.toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+export const peso = pesoFormat
 
 /** Today's price for an item with these options (reorders use current prices, SRS FR-ROR-03) */
 export function priceFor(productId: string, options: string[]) {

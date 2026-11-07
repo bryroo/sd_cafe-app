@@ -1,13 +1,17 @@
-// The shared store: what the customer app and the staff console both read and write.
-// Orders, store settings, the customer's notifications, points and vouchers, response templates,
-// automated orders and the staff sign-in all live here, saved in localStorage under `megs.` and kept
-// in step across tabs (the `storage` event plus a BroadcastChannel). There is no backend: in the full
-// system each write below is a server call.
+// The shared store: what the customer app and the staff console read and write, now backed by the
+// MEGS' Cafe database (Supabase). A signed-in customer loads only their own rows; staff load the queue.
+// Realtime keeps both up to date within seconds (FR-TRK-02, FR-STF-04); the last copy is kept on the
+// device so the app still shows the last known state offline (NFR-REL-04).
+// Business rules live in the database (triggers, RLS) and the Edge Functions; this file maps rows to the
+// app's shapes (pesos, camelCase) and sends the writes.
 import { useEffect, useSyncExternalStore } from 'react'
-import { applyAvailability, defaultOrder, priceFor, productById } from '../data/menu'
-import { featuredPromotion, type MyReward } from '../data/rewards'
+import type { RealtimeChannel } from '@supabase/supabase-js'
+import { callFunction, db, isStaffTab, loginAddress } from '../lib/supabase'
+import { getCatalog, onCatalog, refreshCatalog, type StoreRow, type TierRow } from '../data/catalog'
+import { products } from '../data/menu'
+import { setUsedPromotions, type MyReward } from '../data/rewards'
 import { defaultTemplates, fill, type Template, type TemplateEvent, type Vars } from '../data/templates'
-import { seedAutomations, simulatedRules, type Automation } from '../data/automations'
+import type { Automation } from '../data/automations'
 
 /* ---------- Types ---------- */
 
@@ -19,12 +23,15 @@ export type CartLine = {
   note: string
   unitPrice: number
   qty: number
+  /** The item's name when it was ordered (orders keep it even if the menu changes) */
+  name?: string
 }
 
 export type Address = {
   id: string
   label: 'Home' | 'Work' | 'Other'
   name: string
+  /** "House no., street, barangay, city" */
   street: string
   phone: string
   notes?: string
@@ -41,8 +48,10 @@ export type TimelineEvent = { label: string; status?: OrderStatus; at: number; b
 export type InternalNote = { author: string; at: number; text: string }
 
 export type Order = {
+  /** Database id (orders.order_id) */
+  id: string
   number: number
-  /** Same id on a retried submission: never a second order (SRS NFR-REL-01, IR-08) */
+  /** The checkout's idempotency key: a retry never makes a second order (IR-08) */
   attemptId?: string
   customerId: string
   customerName: string
@@ -50,12 +59,10 @@ export type Order = {
   fulfillment: Fulfillment
   address?: Address
   lines: CartLine[]
-  /** Note for the cafe */
   note?: string
   subtotal: number
   /** Tier discount */
   discount: number
-  /** The order's one promotion: an automatic offer or a promo code */
   offerName?: string
   offerDiscount?: number
   promoCode?: string
@@ -66,19 +73,18 @@ export type Order = {
   total: number
   payment: string
   paymentStatus: 'Paid' | 'Pay at counter' | 'Refund started' | 'Not charged'
+  /** Staff only (IR-03) */
   paymentRef?: string
-  /** Points this order earns when Completed (AS-03: 1 pt per ₱1 paid) */
   points: number
   pointsCredited?: boolean
   status: OrderStatus
   isDelayed?: boolean
-  /** When it should be ready (pickup) or arrive (delivery) */
   eta: number
   placedAt: number
   timeline: TimelineEvent[]
   cancelReason?: string
   cancelledBy?: 'customer' | 'cafe'
-  /** Staff only: never shown in the customer app (IR-03) */
+  /** Staff only: never loaded in the customer app (IR-03) */
   internalNotes: InternalNote[]
   source: 'app' | 'automated'
 }
@@ -86,19 +92,25 @@ export type Order = {
 export type Hours = { open: string; close: string; closed: boolean }
 
 export type StoreSettings = {
+  settingsId: number
+  cafeName: string
   acceptingOrders: boolean
   /** Opening hours per weekday, Sunday first, Asia/Manila time */
   hours: Hours[]
   /** Default preparation time: the pickup ETA (FR-OPS-03) */
   prepMinutes: number
+  deliveryMinutes: number
   deliveryEnabled: boolean
   deliveryFee: number
-  /** Staff overrides over the menu sheet (FR-OPS-04) */
+  pointsPerPeso: number
+  /** Sold-out items, from the menu (FR-OPS-04) */
   availability: Record<string, { available: boolean; reason?: string }>
   /** New-order chime in the staff console */
   chime: boolean
-  /** Demo only: the cafe moves every order on by itself every 8 s */
+  /** Demo only: the open console moves every order on by itself every 8 s */
   autoAdvance: boolean
+  /** Demo tools work only while this is on */
+  demoMode: boolean
 }
 
 export type CustomerNote = {
@@ -118,57 +130,69 @@ export type PointsEntry = { id: string; description: string; at: number; points:
 
 export type StaffState = {
   signedIn: boolean
+  /** Signed in, but the account isn't a staff account */
+  notStaff?: boolean
+  id?: string
+  username?: string
   name: string
   role: string
   fails: number
   lockedUntil: number
 }
 
-export type LoginAttempts = Record<string, { fails: number; lockedUntil: number }>
+export type Customer = {
+  id: string
+  name: string
+  /** E.164 */
+  mobile: string
+  email: string
+  birthday: string
+  defaultSize: string
+  tierId: number
+  points: number
+  notifyOrders: boolean
+  notifyPromotions: boolean
+  notifyRewards: boolean
+}
+
+export type SavedMethod = { id: string; type: 'card' | 'e_wallet'; label: string; isDefault: boolean; token: string }
+
+export type Tier = { id: number; name: string; rank: number; pct: number; qualifyOrders: number | null; qualifyDays: number | null; description: string; isDefault: boolean }
 
 type Shared = {
+  /** The signed-in person's data has loaded at least once */
+  ready: boolean
   orders: Order[]
   store: StoreSettings
+  tiers: Tier[]
+  customer: Customer | null
+  addresses: Address[]
+  paymentMethods: SavedMethod[]
   notifications: CustomerNote[]
   points: number
   myRewards: MyReward[]
-  /** Promo codes this customer has used (one use each) */
+  /** Promotions (promo codes and one-time offers) this customer has used */
   promoUses: string[]
-  /** Points credited or spent in the app, newest first (shown above the sample history) */
+  /** Points credited or spent, newest first */
   pointsLog: PointsEntry[]
   templates: Template[]
   automations: Automation[]
   staff: StaffState
-  loginAttempts: LoginAttempts
 }
 
 /* ---------- Constants and helpers ---------- */
 
-/** The one customer this demo signs in as */
-export const CUSTOMER_ID = 'demo-customer'
 export const CAFE_NAME = "MEGS' Cafe"
 export const COUNTER = 'Pay at counter'
 export const MIN = 60_000
-/** Delivery takes about this long on top of nothing: the delivery ETA */
+/** Delivery takes about this long: the delivery ETA (store_settings.delivery_eta_minutes) */
 export const DELIVERY_MINUTES = 35
+/** The demo staff account (scripts/create-staff.mjs) */
 export const STAFF_LOGIN = { username: 'staff', password: 'megs2026' }
 export const LOCK_AFTER = 5
 export const LOCK_MINUTES = 15
-
-const PREFIX = 'megs.'
-
-const line = (productId: string, options?: string[], qty = 1, note = ''): CartLine => {
-  const base = defaultOrder(productId)
-  const opts = options ?? base.options
-  return {
-    key: [productId, ...opts, note].join('|'),
-    productId,
-    options: opts,
-    note,
-    unitPrice: priceFor(productId, opts) ?? base.unitPrice,
-    qty,
-  }
-}
+/** The demo customer (demo-reset seed) */
+export const DEMO_CUSTOMER = { mobile: '+639171234567', password: 'password1' }
 
 /** The demo cart for the checkout screens (₱480 subtotal), priced from the menu boards:
  *  Caramel Macchiato cold 22 oz ₱140 · Carbonara ₱180 · Spanish Latte cold 16 oz ₱110 + oat milk ₱50. */
@@ -178,16 +202,19 @@ export const sampleLines: CartLine[] = [
   { key: 'sample-3', productId: 'spanish-latte', options: ['Cold · 16 oz', 'Oat milk'], note: 'less ice', unitPrice: 160, qty: 1 },
 ]
 
-const sum = (lines: CartLine[]) => lines.reduce((n, l) => n + l.unitPrice * l.qty, 0)
 /** '0917 123 4567' → '+63 917 123 4567' */
 export function toIntlPhone(phone: string) {
   const digits = phone.replace(/\D/g, '').replace(/^(63|0)/, '')
   if (digits.length !== 10) return phone
   return `+63 ${digits.slice(0, 3)} ${digits.slice(3, 6)} ${digits.slice(6)}`
 }
+/** '0917 123 4567' → '+639171234567' (SRS 3.8: E.164) */
+export function toE164(phone: string) {
+  const digits = phone.replace(/\D/g, '').replace(/^(63|0)/, '')
+  return digits.length === 10 ? `+63${digits}` : phone.trim()
+}
 
 const firstName = (name: string) => name.trim().split(/\s+/)[0] || 'there'
-const id = () => Math.random().toString(36).slice(2, 10)
 
 /** Wall-clock parts in Asia/Manila (SRS 3.1.4: shown in Manila time) */
 function manila(ts: number) {
@@ -236,7 +263,7 @@ export type OpenState = {
 /** SRS FR-CHK-11, FR-OPS-02, IR-10: orders are taken only while Accepting orders is on and the cafe is open */
 export function openState(store: StoreSettings, now = Date.now()): OpenState {
   const { day, minutes } = manila(now)
-  const h = store.hours[day]
+  const h = store.hours[day] ?? { open: '07:00', close: '21:00', closed: false }
   const today = h.closed ? 'Closed today' : `Today ${hourLabel(h.open)} – ${hourLabel(h.close)}`
   const inHours = !h.closed && minutes >= toMinutes(h.open) && minutes < toMinutes(h.close)
   if (store.acceptingOrders && inHours) return { open: true, today }
@@ -245,7 +272,7 @@ export function openState(store: StoreSettings, now = Date.now()): OpenState {
   else
     for (let i = 1; i <= 7; i++) {
       const d = store.hours[(day + i) % 7]
-      if (d.closed) continue
+      if (!d || d.closed) continue
       next = `Opens ${i === 1 ? 'tomorrow' : DAYS[(day + i) % 7]} at ${hourLabel(d.open)}`
       break
     }
@@ -260,220 +287,253 @@ export const minutesLeft = (eta: number, now = Date.now()) => Math.max(1, Math.r
 export const etaLine = (o: Pick<Order, 'eta' | 'fulfillment'>, now = Date.now()) =>
   `${o.fulfillment === 'delivery' ? 'Arrives' : 'Ready'} in about ${minutesLeft(o.eta, now)} min`
 
-/* ---------- Defaults ---------- */
+/* ---------- Mapping database rows to the app's shapes ---------- */
+
+const pesos = (c: number | null | undefined) => (c ?? 0) / 100
+
+const EVENTS: Record<string, TemplateEvent> = {
+  order_received: 'received',
+  order_accepted: 'accepted',
+  order_preparing: 'preparing',
+  order_ready_pickup: 'ready-pickup',
+  order_ready_delivery: 'ready-delivery',
+  order_completed: 'completed',
+  order_cancelled_cafe: 'cancelled-cafe',
+  order_cancelled_customer: 'cancelled-customer',
+  order_delayed: 'delayed',
+  item_unavailable: 'item-unavailable',
+  payment_failed: 'payment-failed',
+}
+const DB_EVENT = Object.fromEntries(Object.entries(EVENTS).map(([k, v]) => [v, k])) as Record<TemplateEvent, string>
+
+const CANCEL_CODES: Record<string, string> = {
+  'out of stock': 'out_of_stock',
+  'too busy': 'too_busy',
+  'customer request': 'customer_request',
+  'payment issue': 'payment_issue',
+}
+
+type AddressJson = { label?: string; recipient_name?: string; street?: string; barangay?: string; city?: string; mobile_no?: string | null; notes?: string | null; removed?: boolean }
+
+const joinStreet = (a: AddressJson) => [a.street, a.barangay, a.city].filter((x) => x && x !== '—').join(', ')
+
+function toAddress(id: string, a: AddressJson, isDefault?: boolean): Address {
+  return {
+    id,
+    label: (a.label as Address['label']) ?? 'Other',
+    name: a.recipient_name ?? '',
+    street: a.removed ? 'Address removed' : joinStreet(a),
+    phone: a.mobile_no ? toIntlPhone(a.mobile_no) : '',
+    notes: a.notes ?? undefined,
+    isDefault,
+  }
+}
+
+/** "House no., street, barangay, city" → the database's street, barangay and city (FR-CHK-02) */
+export function splitStreet(line: string) {
+  const parts = line.split(',').map((s) => s.trim()).filter(Boolean)
+  if (parts.length >= 3) return { street: parts.slice(0, -2).join(', '), barangay: parts[parts.length - 2], city: parts[parts.length - 1] }
+  if (parts.length === 2) return { street: parts[0], barangay: '—', city: parts[1] }
+  return { street: line.trim(), barangay: '—', city: '—' }
+}
+
+type OrderRow = {
+  order_id: string
+  order_no: number
+  idempotency_key: string
+  customer_id: string | null
+  customer_name: string
+  customer_mobile: string
+  fulfillment: Fulfillment
+  address_id: string | null
+  delivery_address: AddressJson | null
+  note: string | null
+  subtotal: number
+  tier_discount: number
+  promotion_id: string | null
+  promotion_label: string | null
+  promo_discount: number
+  reward_name: string | null
+  reward_discount: number
+  delivery_fee: number
+  total: number
+  points_to_earn: number
+  status: OrderStatus
+  is_delayed: boolean
+  eta: string
+  source: 'app' | 'automated'
+  cancelled_by: 'customer' | 'cafe' | null
+  cancel_reason: string | null
+  placed_at: string
+  order_line: { line_id: string; item_id: string | null; item_name: string; unit_price: number; quantity: number; note: string | null; sort_order: number; order_line_option: { label: string; sort_order: number }[] }[]
+  order_status_event: { to_status: OrderStatus | null; label: string; actor_name: string | null; created_at: string }[]
+  payment: { payment_id: string; method: string; method_label: string; status: string; provider_ref?: string | null }[]
+  customer_reward: { reward_id: string } | null
+  internal_note?: { author_name: string; body: string; created_at: string }[]
+}
+
+function paymentStatus(p: OrderRow['payment'][number] | undefined): Order['paymentStatus'] {
+  if (!p) return 'Not charged'
+  if (p.status === 'refunded') return 'Refund started'
+  if (p.status === 'failed') return 'Not charged'
+  if (p.method === 'counter' && p.status === 'pending') return 'Pay at counter'
+  return 'Paid'
+}
+
+function toOrder(r: OrderRow, refs: Map<string, string>): Order {
+  const pay = [...(r.payment ?? [])].pop()
+  return {
+    id: r.order_id,
+    number: r.order_no,
+    attemptId: r.idempotency_key,
+    customerId: r.customer_id ?? 'deleted',
+    customerName: r.customer_name,
+    customerPhone: toIntlPhone(r.customer_mobile),
+    fulfillment: r.fulfillment,
+    address: r.delivery_address ? toAddress(r.address_id ?? `order-${r.order_no}`, r.delivery_address) : undefined,
+    lines: [...r.order_line]
+      .sort((a, b) => a.sort_order - b.sort_order)
+      .map((l) => ({
+        key: l.line_id,
+        productId: l.item_id ?? '',
+        name: l.item_name,
+        options: [...l.order_line_option].sort((a, b) => a.sort_order - b.sort_order).map((o) => o.label),
+        note: l.note ?? '',
+        unitPrice: pesos(l.unit_price),
+        qty: l.quantity,
+      })),
+    note: r.note ?? undefined,
+    subtotal: pesos(r.subtotal),
+    discount: pesos(r.tier_discount),
+    offerName: r.promotion_label ?? undefined,
+    offerDiscount: r.promo_discount ? pesos(r.promo_discount) : undefined,
+    promoCode: r.promotion_id ?? undefined,
+    rewardId: r.customer_reward?.reward_id,
+    rewardName: r.reward_name ?? undefined,
+    rewardDiscount: r.reward_discount ? pesos(r.reward_discount) : undefined,
+    deliveryFee: pesos(r.delivery_fee),
+    total: pesos(r.total),
+    payment: pay?.method_label ?? COUNTER,
+    paymentStatus: paymentStatus(pay),
+    paymentRef: pay ? refs.get(pay.payment_id) : undefined,
+    points: r.points_to_earn,
+    pointsCredited: r.status === 'Completed',
+    status: r.status,
+    isDelayed: r.is_delayed,
+    eta: Date.parse(r.eta),
+    placedAt: Date.parse(r.placed_at),
+    timeline: [...r.order_status_event]
+      .sort((a, b) => Date.parse(a.created_at) - Date.parse(b.created_at))
+      .map((e) => ({ label: e.label, status: e.to_status ?? undefined, at: Date.parse(e.created_at), by: e.actor_name ?? '' })),
+    cancelReason: r.cancel_reason ?? undefined,
+    cancelledBy: r.cancelled_by ?? undefined,
+    internalNotes: (r.internal_note ?? [])
+      .map((n) => ({ author: n.author_name, at: Date.parse(n.created_at), text: n.body }))
+      .sort((a, b) => a.at - b.at),
+    source: r.source,
+  }
+}
+
+function toStore(s: StoreRow): StoreSettings {
+  return {
+    settingsId: s.settings_id,
+    cafeName: s.cafe_name,
+    acceptingOrders: s.accepting_orders,
+    hours: s.opening_hours,
+    prepMinutes: s.default_prep_minutes,
+    deliveryMinutes: s.delivery_eta_minutes,
+    deliveryEnabled: s.delivery_enabled,
+    deliveryFee: pesos(s.delivery_fee),
+    pointsPerPeso: Number(s.points_per_peso),
+    availability: Object.fromEntries(products.map((p) => [p.id, { available: p.available, reason: p.unavailableReason }])),
+    chime: s.new_order_chime,
+    autoAdvance: s.auto_advance_demo,
+    demoMode: s.demo_mode,
+  }
+}
+
+const toTier = (t: TierRow): Tier => ({
+  id: t.tier_id,
+  name: t.name,
+  rank: t.rank,
+  pct: Number(t.discount_pct),
+  qualifyOrders: t.qualify_orders,
+  qualifyDays: t.qualify_days,
+  description: t.description ?? '',
+  isDefault: t.is_default,
+})
+
+type NoteRow = { notification_id: string; title: string; body: string; deep_link: string; channel: string; read_at: string | null; created_at: string; response_template: { event: string } | null }
+
+const ORDER_COLUMNS =
+  '*, order_line(line_id, item_id, item_name, unit_price, quantity, note, sort_order, order_line_option(label, sort_order)), ' +
+  'order_status_event(to_status, label, actor_name, created_at), ' +
+  'payment(payment_id, method, method_label, amount, status), customer_reward(reward_id)'
+
+/* ---------- The store ---------- */
 
 const defaultStore = (): StoreSettings => ({
+  settingsId: 1,
+  cafeName: CAFE_NAME,
   acceptingOrders: true,
   hours: Array.from({ length: 7 }, () => ({ open: '07:00', close: '21:00', closed: false })),
   prepMinutes: 10,
+  deliveryMinutes: DELIVERY_MINUTES,
   deliveryEnabled: true,
   deliveryFee: 25,
+  pointsPerPeso: 1,
   availability: {},
   chime: true,
   autoAdvance: false,
+  demoMode: true,
 })
 
-const ev = (label: string, at: number, by: string, status?: OrderStatus): TimelineEvent => ({ label, status, at, by })
-
-/** The queue the demo opens with: Maria's sample order #1042 plus a few other customers' orders */
-function seedOrders(now: number): Order[] {
-  const ago = (m: number) => now - m * MIN
-  const order = (
-    o: Partial<Order> & Pick<Order, 'number' | 'customerId' | 'customerName' | 'customerPhone' | 'lines' | 'status' | 'placedAt'>,
-  ): Order => {
-    const subtotal = sum(o.lines)
-    const fulfillment = o.fulfillment ?? 'pickup'
-    const deliveryFee = fulfillment === 'delivery' ? 25 : 0
-    const discount = o.discount ?? 0
-    const total = subtotal - discount + deliveryFee
-    const payment = o.payment ?? COUNTER
-    return {
-      fulfillment,
-      deliveryFee,
-      discount,
-      subtotal,
-      total,
-      payment,
-      paymentStatus: payment === COUNTER ? 'Pay at counter' : 'Paid',
-      paymentRef: payment === COUNTER ? undefined : `PAY-${o.number}-4F2A`,
-      points: Math.floor(total),
-      eta: o.placedAt + (fulfillment === 'delivery' ? DELIVERY_MINUTES : 10) * MIN,
-      timeline: [ev('Order placed', o.placedAt, o.customerName, 'Received')],
-      internalNotes: [],
-      source: 'app',
-      ...o,
-    }
-  }
-  return [
-    order({
-      number: 1042,
-      customerId: CUSTOMER_ID,
-      customerName: 'Maria Santos',
-      customerPhone: '+63 917 123 4567',
-      lines: sampleLines,
-      discount: 24,
-      status: 'Preparing',
-      placedAt: ago(6),
-      timeline: [
-        ev('Order placed', ago(6), 'Maria Santos', 'Received'),
-        ev('Accepted', ago(5), 'Staff', 'Accepted'),
-        ev('Preparing', ago(3), 'Staff', 'Preparing'),
-      ],
-    }),
-    order({
-      number: 1041,
-      customerId: 'ana',
-      customerName: 'Ana Cruz',
-      customerPhone: '+63 917 555 0123',
-      lines: [line('latte', ['Hot · 12 oz'])],
-      payment: 'Saved card',
-      status: 'Ready',
-      placedAt: ago(15),
-      source: 'automated',
-      timeline: [
-        ev('Order placed by recurring order', ago(15), 'System', 'Received'),
-        ev('Accepted', ago(14), 'Staff', 'Accepted'),
-        ev('Preparing', ago(12), 'Staff', 'Preparing'),
-        ev('Ready', ago(3), 'Staff', 'Ready'),
-      ],
-    }),
-    order({
-      number: 1040,
-      customerId: 'jen',
-      customerName: 'Jen Dizon',
-      customerPhone: '+63 927 555 0198',
-      lines: [line('choco-lava', ['Cold · 22 oz']), line('potato-fries-plain')],
-      status: 'Received',
-      placedAt: ago(12),
-    }),
-    order({
-      number: 1039,
-      customerId: 'leo',
-      customerName: 'Leo Tan',
-      customerPhone: '+63 919 555 0177',
-      fulfillment: 'delivery',
-      address: {
-        id: 'leo-work',
-        label: 'Work',
-        name: 'Leo Tan',
-        street: '21F Greenfield Tower, Mandaluyong City',
-        phone: '+63 919 555 0177',
-      },
-      lines: [line('carbonara', undefined, 2), line('nachos')],
-      payment: 'Saved card',
-      status: 'Completed',
-      placedAt: ago(35),
-      source: 'automated',
-      pointsCredited: true,
-      timeline: [
-        ev('Order placed by office pre-order', ago(35), 'System', 'Received'),
-        ev('Accepted', ago(34), 'Staff', 'Accepted'),
-        ev('Preparing', ago(30), 'Staff', 'Preparing'),
-        ev('Out for delivery', ago(20), 'Staff', 'Ready'),
-        ev('Delivered', ago(5), 'Staff', 'Completed'),
-      ],
-    }),
-  ]
-}
-
-function seedNotes(now: number): CustomerNote[] {
-  return [
-    {
-      id: 'seed-points',
-      title: 'You earned 120 points',
-      body: 'Thanks for ordering. Points added to your balance.',
-      at: now - 60 * MIN,
-      to: '/rewards/activity',
-      read: false,
-    },
-    {
-      id: 'seed-promo',
-      title: featuredPromotion?.title ?? 'New offers this week',
-      body: 'Ends 30 Nov. Tap to see the offer.',
-      at: now - 26 * 60 * MIN,
-      to: featuredPromotion ? `/promotions/${featuredPromotion.id}` : '/promotions',
-      read: true,
-    },
-    {
-      id: 'seed-1038',
-      title: 'Order #1038 completed',
-      body: 'Rate your order or order it again.',
-      at: now - 20 * 24 * 60 * MIN,
-      to: '/orders/1038',
-      read: true,
-    },
-  ]
-}
-
-const defaults = (now = Date.now()): Shared => ({
-  orders: seedOrders(now),
+const empty = (): Shared => ({
+  ready: false,
+  orders: [],
   store: defaultStore(),
-  notifications: seedNotes(now),
-  points: 1240,
-  myRewards: [
-    { rewardId: 'free-drink', status: 'Redeemed' },
-    { rewardId: 'free-pastry', status: 'Expired' },
-  ],
+  tiers: [],
+  customer: null,
+  addresses: [],
+  paymentMethods: [],
+  notifications: [],
+  points: 0,
+  myRewards: [],
   promoUses: [],
   pointsLog: [],
   templates: defaultTemplates,
-  automations: seedAutomations(now),
-  staff: { signedIn: false, name: 'Rina Bautista', role: 'Shift lead', fails: 0, lockedUntil: 0 },
-  loginAttempts: {},
+  automations: [],
+  staff: { signedIn: false, name: '', role: '', fails: 0, lockedUntil: 0 },
 })
 
-/* ---------- Load, save, subscribe ---------- */
+const role = () => (isStaffTab() ? 'staff' : 'customer')
+const CACHE = () => `megs.cache.${role()}`
 
-const KEYS = Object.keys(defaults()) as (keyof Shared)[]
-
-function load(): Shared {
-  const base = defaults()
-  const out = { ...base }
-  for (const k of KEYS) {
-    try {
-      const raw = window.localStorage.getItem(PREFIX + k)
-      if (raw !== null) (out as Record<string, unknown>)[k] = JSON.parse(raw)
-    } catch {
-      /* blocked or unreadable: the default stands */
-    }
+let state: Shared = (() => {
+  const base = empty()
+  try {
+    const saved = localStorage.getItem(CACHE())
+    if (saved) return { ...base, ...(JSON.parse(saved) as Partial<Shared>), ready: false }
+  } catch {
+    /* unreadable copy */
   }
-  // Settings saved by an older build may lack newer fields
-  out.store = { ...base.store, ...out.store }
-  out.staff = { ...base.staff, ...out.staff }
-  return out
-}
-
-let state: Shared = load()
+  return base
+})()
 let syncedAt = Date.now()
 const listeners = new Set<() => void>()
 
-function emit() {
-  applyAvailability(state.store.availability)
+function set(patch: Partial<Shared>) {
+  state = { ...state, ...patch }
   listeners.forEach((l) => l())
 }
-applyAvailability(state.store.availability)
 
-// The first visit saves the seeded queue, so the staff tab and the customer tab start from the same orders
-try {
-  for (const k of KEYS)
-    if (window.localStorage.getItem(PREFIX + k) === null) window.localStorage.setItem(PREFIX + k, JSON.stringify(state[k]))
-} catch {
-  /* storage blocked: each tab keeps its own copy */
+function applyCatalog() {
+  const c = getCatalog()
+  if (!c) return
+  set({ store: toStore(c.store), tiers: c.tiers.map(toTier) })
 }
-
-const channel = typeof BroadcastChannel !== 'undefined' ? new BroadcastChannel('megs') : null
-
-/** Re-reads everything from storage (another tab wrote, or pull-to-refresh) */
-export function reloadShared() {
-  state = load()
-  syncedAt = Date.now()
-  emit()
-}
-
-channel?.addEventListener('message', reloadShared)
-window.addEventListener('storage', (e) => {
-  if (e.key === null || e.key.startsWith(PREFIX)) reloadShared()
-})
+applyCatalog()
+onCatalog(applyCatalog)
 
 export const getShared = () => state
 export const lastSynced = () => syncedAt
@@ -485,10 +545,253 @@ export function subscribe(listener: () => void) {
   }
 }
 
-/** The whole shared store; re-renders on any change, in this tab or another */
+/** The whole shared store; re-renders on any change, in this tab or from the database */
 export function useShared() {
   return useSyncExternalStore(subscribe, getShared)
 }
+
+function remember() {
+  try {
+    const { ready: _ready, ...rest } = state
+    void _ready
+    localStorage.setItem(CACHE(), JSON.stringify(rest))
+  } catch {
+    /* storage full or blocked */
+  }
+}
+
+/* ---------- Loading ---------- */
+
+async function loadCustomer(uid: string) {
+  const c = db()
+  const [customer, orders, points, vouchers, uses, notes, addresses, methods] = await Promise.all([
+    c.from('customer').select('*').eq('customer_id', uid).maybeSingle(),
+    c.from('orders').select(ORDER_COLUMNS).eq('customer_id', uid).order('placed_at', { ascending: false }),
+    c.from('points_txn').select('txn_id, description, points, created_at').eq('customer_id', uid).order('created_at', { ascending: false }),
+    c.from('customer_reward').select('customer_reward_id, reward_id, status, expires_on, redeemed_at').eq('customer_id', uid).order('redeemed_at', { ascending: false }),
+    c.from('promotion_redemption').select('promotion_id').eq('customer_id', uid),
+    c.from('notification').select('notification_id, title, body, deep_link, channel, read_at, created_at, response_template(event)').eq('customer_id', uid).order('created_at', { ascending: false }),
+    c.from('address').select('*').eq('customer_id', uid).order('created_at'),
+    c.from('payment_method').select('*').eq('customer_id', uid).order('created_at'),
+  ])
+  const failed = [customer, orders, points, vouchers, uses, notes, addresses, methods].find((r) => r.error)
+  if (failed) throw failed.error
+  if (!customer.data) {
+    // Signed in, but not a customer account (e.g. a staff login in the customer app)
+    set({ customer: null, ready: true })
+    return
+  }
+  const k = customer.data
+  const used = (uses.data ?? []).map((u: { promotion_id: string }) => u.promotion_id)
+  setUsedPromotions(used)
+  set({
+    ready: true,
+    customer: {
+      id: k.customer_id,
+      name: k.full_name,
+      mobile: k.mobile_no,
+      email: k.email ?? '',
+      birthday: k.birthday ?? '',
+      defaultSize: k.default_drink_size ?? '',
+      tierId: k.tier_id,
+      points: k.points_balance,
+      notifyOrders: k.notify_order_updates,
+      notifyPromotions: k.notify_promotions,
+      notifyRewards: k.notify_rewards_reminders,
+    },
+    points: k.points_balance,
+    orders: (orders.data as unknown as OrderRow[]).map((o) => toOrder(o, new Map())),
+    pointsLog: (points.data ?? []).map((p: { txn_id: number; description: string; points: number; created_at: string }) => ({
+      id: String(p.txn_id),
+      description: p.description,
+      at: Date.parse(p.created_at),
+      points: p.points,
+    })),
+    myRewards: (vouchers.data ?? []).map((v: { customer_reward_id: string; reward_id: string; status: string; expires_on: string }) => ({
+      rewardId: v.reward_id,
+      voucherId: v.customer_reward_id,
+      expiresOn: Date.parse(v.expires_on),
+      status: v.status === 'unused' ? 'Redeemed' : v.status === 'used' ? 'Used' : 'Expired',
+    })),
+    promoUses: used,
+    notifications: ((notes.data ?? []) as unknown as NoteRow[]).map(
+      (n: { notification_id: string; title: string; body: string; deep_link: string; channel: string; read_at: string | null; created_at: string; response_template: { event: string } | null }) => ({
+        id: n.notification_id,
+        title: n.title,
+        body: n.body,
+        at: Date.parse(n.created_at),
+        to: n.deep_link,
+        read: !!n.read_at,
+        event: n.response_template ? EVENTS[n.response_template.event] : undefined,
+        push: n.channel === 'push',
+      }),
+    ),
+    addresses: (addresses.data ?? []).map((a: AddressJson & { address_id: string; is_default: boolean }) => toAddress(a.address_id, a, a.is_default)),
+    paymentMethods: (methods.data ?? []).map((m: { method_id: string; type: 'card' | 'e_wallet'; last4: string | null; wallet_name: string | null; is_default: boolean; provider_token: string }) => ({
+      id: m.method_id,
+      type: m.type,
+      label: m.type === 'card' ? `Card ending ${m.last4}` : m.wallet_name ?? 'E-wallet',
+      isDefault: m.is_default,
+      token: m.provider_token,
+    })),
+  })
+}
+
+async function loadStaff(uid: string) {
+  const c = db()
+  const { data: me } = await c.from('staff_user').select('staff_id, username, full_name, role').eq('staff_id', uid).eq('is_active', true).maybeSingle()
+  if (!me) {
+    set({ ready: true, staff: { ...state.staff, signedIn: false, notStaff: true } })
+    return
+  }
+  const [orders, payments, templates, automations] = await Promise.all([
+    c.from('orders').select(ORDER_COLUMNS + ', internal_note(author_name, body, created_at)').order('placed_at', { ascending: false }).limit(300),
+    c.rpc('staff_payments'),
+    c.from('response_template').select('*').eq('audience', 'customer').order('template_id'),
+    c.from('automated_order').select('*, orders:linked_order_id(order_no)').order('created_at', { ascending: false }).limit(100),
+  ])
+  const failed = [orders, payments, templates, automations].find((r) => r.error)
+  if (failed) throw failed.error
+  const refs = new Map<string, string>(((payments.data ?? []) as { payment_id: string; provider_ref: string | null }[]).map((p: { payment_id: string; provider_ref: string | null }) => [p.payment_id, p.provider_ref ?? ''] as [string, string]))
+  set({
+    ready: true,
+    staff: { signedIn: true, id: me.staff_id, username: me.username, name: me.full_name, role: me.role === 'manager' ? 'Manager' : 'Staff', fails: 0, lockedUntil: 0 },
+    orders: (orders.data as unknown as OrderRow[]).map((o) => toOrder(o, refs)),
+    templates: (templates.data ?? []).map(
+      (t: { event: string; name: string; title: string; channel: string; body: string; enabled: boolean; is_critical: boolean; last_edited_by_name: string | null; last_edited_at: string }) => ({
+        event: EVENTS[t.event],
+        name: t.name,
+        title: t.title,
+        channel: t.channel === 'push' ? 'push' : 'in-app',
+        body: t.body,
+        enabled: t.enabled,
+        critical: t.is_critical,
+        editedBy: t.last_edited_by_name ?? 'MEGS setup',
+        editedAt: Date.parse(t.last_edited_at),
+      }),
+    ) as Template[],
+    automations: (automations.data ?? []).map(
+      (a: {
+        automated_order_id: string
+        created_at: string
+        customer_name: string
+        customer_id: string | null
+        customer_mobile: string | null
+        rule: string
+        contents: { item_id: string; options?: string[]; quantity: number }[]
+        fulfillment: Fulfillment
+        state: Automation['state']
+        failure_reason: string | null
+        error_code: string | null
+        system_response: string | null
+        customer_message: string | null
+        timeline: { label: string; at: string }[]
+        converted_by: string | null
+        orders: { order_no: number } | null
+      }): Automation => ({
+        id: a.automated_order_id,
+        at: Date.parse(a.created_at),
+        customer: a.customer_name,
+        customerId: a.customer_id ?? '',
+        phone: a.customer_mobile ? toIntlPhone(a.customer_mobile) : '—',
+        rule: a.rule,
+        lines: a.contents.map((l) => ({ productId: l.item_id, options: l.options, qty: l.quantity })),
+        fulfillment: a.fulfillment,
+        state: a.state,
+        reason: a.failure_reason ?? undefined,
+        response: a.error_code ? { code: a.error_code, message: a.system_response ?? a.error_code } : undefined,
+        customerMessage: a.customer_message ?? undefined,
+        orderNumber: a.orders?.order_no,
+        timeline: a.timeline.map((t) => ({ label: t.label, at: Date.parse(t.at) })),
+        handled: a.converted_by ? 'manual' : undefined,
+      }),
+    ),
+  })
+}
+
+let channel: RealtimeChannel | null = null
+let loadedFor: string | null = null
+let loading: Promise<void> | null = null
+
+/** Loads this tab's data for whoever is signed in (or clears it), and keeps it live */
+async function load() {
+  const { data } = await db().auth.getSession()
+  const uid = data.session?.user.id ?? null
+  if (!uid) {
+    if (loadedFor !== null || !state.ready) {
+      loadedFor = null
+      setUsedPromotions([])
+      set({ ...empty(), store: state.store, tiers: state.tiers, ready: true })
+      try {
+        localStorage.removeItem(CACHE())
+      } catch {
+        /* nothing saved */
+      }
+    }
+    listen(null)
+    return
+  }
+  try {
+    if (role() === 'staff') await loadStaff(uid)
+    else await loadCustomer(uid)
+    loadedFor = uid
+    syncedAt = Date.now()
+    remember()
+    listen(uid)
+  } catch (err) {
+    console.warn('MEGS: could not load', err)
+    set({ ready: true })
+  }
+}
+
+/** Re-reads everything (pull-to-refresh, Retry, and after every write) */
+export function reloadShared() {
+  loading ??= load().finally(() => {
+    loading = null
+  })
+  return loading
+}
+
+let soon: ReturnType<typeof setTimeout> | undefined
+const reloadSoon = () => {
+  clearTimeout(soon)
+  soon = setTimeout(() => void reloadShared(), 250)
+}
+
+/** Realtime: any change this person may see triggers a reload (RLS decides what reaches whom) */
+function listen(uid: string | null) {
+  const key = `${role()}:${uid ?? 'guest'}`
+  if (channel && channel.topic === `realtime:megs-${key}`) return
+  if (channel) void db().removeChannel(channel)
+  const tables =
+    uid === null
+      ? ['menu_item', 'store_settings']
+      : role() === 'staff'
+        ? ['orders', 'order_status_event', 'internal_note', 'payment', 'automated_order', 'response_template', 'menu_item', 'store_settings']
+        : ['orders', 'order_status_event', 'payment', 'notification', 'customer', 'points_txn', 'customer_reward', 'promotion_redemption', 'menu_item', 'store_settings']
+  let ch = db().channel(`megs-${key}`)
+  for (const table of tables) {
+    ch = ch.on('postgres_changes', { event: '*', schema: 'public', table }, () => {
+      if (table === 'menu_item' || table === 'store_settings') void refreshCatalog()
+      if (uid) reloadSoon()
+    })
+  }
+  channel = ch.subscribe()
+}
+
+/** Start-up: load now, and again whenever this tab's sign-in changes */
+export function startShared() {
+  void reloadShared()
+  db().auth.onAuthStateChange((event) => {
+    if (event === 'SIGNED_IN' || event === 'SIGNED_OUT' || event === 'USER_UPDATED') void reloadShared()
+  })
+  // Polling fallback (SRS 3.1.4: every 15 s if the live channel drops)
+  setInterval(() => {
+    if (document.visibilityState === 'visible' && navigator.onLine) void reloadShared()
+  }, 15_000)
+}
+
+/* ---------- Writes ---------- */
 
 let failNext = false
 /** Demo: makes the next write fail, to show the "Couldn't update" state (staff `?fail=1`) */
@@ -496,52 +799,33 @@ export const failNextWrite = () => {
   failNext = true
 }
 
-/**
- * Applies a change on top of the latest saved copy and saves it. Throws when the write fails;
- * nothing is changed then. One call is one "transaction": every key it returns is written together.
- */
-export function update(change: (s: Shared) => Partial<Shared>) {
-  const fresh = load()
-  const patch = change(fresh)
+/** Turns a database or network error into the sentence the person sees */
+function problem(error: { message?: string } | null | undefined, fallback = "Couldn't update. Try again."): Error {
+  const msg = error?.message ?? ''
+  // Messages raised by the database rules are written for people; anything technical gets the fallback
+  return new Error(msg && !/violates|syntax|permission denied|JWT|fetch|network/i.test(msg) ? msg : fallback)
+}
+
+/** Runs one write; throws a person-readable error; reloads so every screen shows the result */
+async function write(run: () => PromiseLike<{ error: { message?: string } | null; data?: unknown }>, expectRows = false) {
   if (failNext) {
     failNext = false
     throw new Error('Simulated write failure')
   }
-  const written: (keyof Shared)[] = []
-  try {
-    for (const k of Object.keys(patch) as (keyof Shared)[]) {
-      window.localStorage.setItem(PREFIX + k, JSON.stringify(patch[k]))
-      written.push(k)
-    }
-  } catch (err) {
-    // Roll back what was written, so a failure leaves no partial change (NFR-REL-02)
-    for (const k of written) {
-      try {
-        window.localStorage.setItem(PREFIX + k, JSON.stringify(fresh[k]))
-      } catch {
-        /* nothing more to do */
-      }
-    }
-    throw err
-  }
-  state = { ...fresh, ...patch }
-  syncedAt = Date.now()
-  channel?.postMessage('changed')
-  emit()
+  const { error, data } = await run()
+  if (error) throw problem(error)
+  if (expectRows && Array.isArray(data) && data.length === 0) throw problem(null)
+  await reloadShared()
+  return data
 }
 
-/** For writes the customer app makes in passing: a failure is logged, not thrown at the screen */
-export function quietly(change: (s: Shared) => Partial<Shared>) {
-  try {
-    update(change)
-    return true
-  } catch (err) {
-    console.warn('MEGS: could not save', err)
-    return false
-  }
+const orderByNumber = (n: number) => {
+  const o = state.orders.find((x) => x.number === n)
+  if (!o) throw new Error(`Order #${n} not found`)
+  return o
 }
 
-/* ---------- Notifications from templates ---------- */
+/* ---------- Notifications from templates (staff previews) ---------- */
 
 const template = (s: Shared, event: TemplateEvent) =>
   s.templates.find((t) => t.event === event) ?? defaultTemplates.find((t) => t.event === event)!
@@ -550,33 +834,15 @@ export const varsFor = (o: Order, extra: Vars = {}): Vars => ({
   customer_name: firstName(o.customerName),
   order_number: String(o.number),
   pickup_time: `${minutesLeft(o.eta)} min`,
-  cafe_name: CAFE_NAME,
+  cafe_name: state.store.cafeName,
   reason: o.cancelReason?.toLowerCase(),
   ...extra,
 })
 
-/** The customer message an event sends for this order (the staff action bar previews it) */
+/** The customer message an event sends for this order (the staff action bar previews it, FR-STF-11) */
 export function messageFor(s: Shared, event: TemplateEvent, o: Order, extra: Vars = {}) {
   const t = template(s, event)
   return { title: t.title, body: fill(t.body, varsFor(o, extra)), enabled: t.enabled || t.critical, push: t.channel === 'push' }
-}
-
-/** Adds the customer's notification for an order event (only for this demo's customer) */
-function notify(s: Shared, event: TemplateEvent, o: Order, extra: Vars = {}): CustomerNote[] {
-  if (o.customerId !== CUSTOMER_ID) return s.notifications
-  const m = messageFor(s, event, o, extra)
-  if (!m.enabled) return s.notifications
-  const note: CustomerNote = {
-    id: `${o.number}-${event}-${id()}`,
-    title: m.title,
-    body: m.body,
-    at: Date.now(),
-    to: `/orders/tracking?n=${o.number}`,
-    read: false,
-    event,
-    push: m.push,
-  }
-  return [note, ...s.notifications]
 }
 
 export const eventFor = (o: Order, to: OrderStatus, by: 'customer' | 'cafe'): TemplateEvent => {
@@ -596,33 +862,7 @@ export const eventFor = (o: Order, to: OrderStatus, by: 'customer' | 'cafe'): Te
   }
 }
 
-/** How far along an order must be for a status message about it to still be true */
-const EVENT_STAGE: Partial<Record<TemplateEvent, OrderStatus>> = {
-  accepted: 'Accepted',
-  preparing: 'Preparing',
-  'ready-pickup': 'Ready',
-  'ready-delivery': 'Ready',
-  completed: 'Completed',
-}
-const STAGES: OrderStatus[] = ['Received', 'Accepted', 'Preparing', 'Ready', 'Completed']
-
-/**
- * Drops this order's status notifications that are ahead of where the order is now (or that say it was
- * cancelled when it isn't), e.g. after the demo order is set back to Preparing. A "Ready for pickup"
- * message must never open an order that is still being prepared.
- */
-export function notesMatching(notes: CustomerNote[], number: number, status: OrderStatus): CustomerNote[] {
-  const at = STAGES.indexOf(status)
-  return notes.filter((n) => {
-    if (!n.event || !n.to.endsWith(`n=${number}`)) return true
-    if (n.event === 'cancelled-cafe' || n.event === 'cancelled-customer') return status === 'Cancelled'
-    const needs = EVENT_STAGE[n.event]
-    if (!needs) return true
-    return status !== 'Cancelled' && at >= STAGES.indexOf(needs)
-  })
-}
-
-/* ---------- Order transitions (SRS Table 3-1, FR-STF-06) ---------- */
+/* ---------- Order transitions (SRS Table 3-1, FR-STF-06; enforced again by the database) ---------- */
 
 const NEXT: Record<OrderStatus, OrderStatus[]> = {
   Received: ['Accepted', 'Cancelled'],
@@ -633,10 +873,8 @@ const NEXT: Record<OrderStatus, OrderStatus[]> = {
   Cancelled: [],
 }
 
-/** The one place the rules live: anything else is rejected */
 export function canMove(from: OrderStatus, to: OrderStatus, by: 'customer' | 'cafe') {
   if (!NEXT[from].includes(to)) return false
-  // FR-TRK-04 / IR-02: a customer may only cancel, and only while Received or Accepted
   if (by === 'customer') return to === 'Cancelled' && (from === 'Received' || from === 'Accepted')
   return true
 }
@@ -647,399 +885,315 @@ export const nextStatuses = (from: OrderStatus) => NEXT[from]
 export const stepLabel = (o: Pick<Order, 'fulfillment'>, s: OrderStatus) =>
   o.fulfillment === 'delivery' && s === 'Ready' ? 'Out for delivery' : o.fulfillment === 'delivery' && s === 'Completed' ? 'Delivered' : s
 
-export function moveOrder(number: number, to: OrderStatus, by: 'customer' | 'cafe', opts: { reason?: string; actor?: string } = {}) {
-  update((s) => {
-    const o = s.orders.find((x) => x.number === number)
-    if (!o) throw new Error(`Order #${number} not found`)
-    if (!canMove(o.status, to, by)) throw new Error(`Order #${number} can't go from ${o.status} to ${to}`)
-    const now = Date.now()
-    const actor = opts.actor ?? (by === 'customer' ? o.customerName : 'Staff')
-    const next: Order = {
-      ...o,
-      status: to,
-      // The Delayed flag clears when the status advances
-      isDelayed: false,
-      timeline: [...o.timeline, ev(to === 'Cancelled' ? `Cancelled by ${by === 'customer' ? 'customer' : 'cafe'}` : stepLabel(o, to), now, actor, to)],
-    }
-    const patch: Partial<Shared> = {}
-    if (to === 'Accepted') next.eta = Math.max(o.eta, now + (o.fulfillment === 'delivery' ? DELIVERY_MINUTES : s.store.prepMinutes) * MIN)
-    if (to === 'Cancelled') {
-      next.cancelledBy = by
-      next.cancelReason = opts.reason ?? (by === 'customer' ? 'Customer request' : 'Cancelled by the cafe')
-      // FR-TRK-05: an in-app payment is refunded; the voucher and the promo code go back
-      if (o.paymentStatus === 'Paid') next.paymentStatus = 'Refund started'
-      if (o.paymentStatus === 'Pay at counter') next.paymentStatus = 'Not charged'
-      if (o.rewardId && o.customerId === CUSTOMER_ID)
-        patch.myRewards = s.myRewards.map((m) => (m.rewardId === o.rewardId && m.status === 'Used' ? { ...m, status: 'Redeemed' } : m))
-      if (o.promoCode && o.customerId === CUSTOMER_ID) {
-        const i = s.promoUses.indexOf(o.promoCode)
-        if (i >= 0) patch.promoUses = s.promoUses.filter((_, j) => j !== i)
-      }
-    }
-    // FR-LOY-01 / IR-05: points are credited in the same write that completes the order, once
-    if (to === 'Completed') {
-      if (o.paymentStatus === 'Pay at counter') next.paymentStatus = 'Paid'
-      if (!o.pointsCredited && o.customerId === CUSTOMER_ID) {
-        patch.points = s.points + o.points
-        patch.pointsLog = [{ id: `order-${o.number}`, description: `Order #${o.number}`, at: now, points: o.points }, ...s.pointsLog]
-      }
-      next.pointsCredited = true
-    }
-    patch.orders = s.orders.map((x) => (x.number === number ? next : x))
-    patch.notifications = notify(s, eventFor(o, to, by), next)
-    return patch
-  })
+/** Moves an order on. The database stamps the time, writes the timeline, sends the customer message,
+ *  credits points on Completed and refunds on Cancelled, all in the same transaction. */
+export async function moveOrder(number: number, to: OrderStatus, by: 'customer' | 'cafe', opts: { reason?: string; actor?: string } = {}) {
+  const o = orderByNumber(number)
+  if (!canMove(o.status, to, by)) throw new Error(`Order #${number} can't go from ${o.status} to ${to}`)
+  const patch: Record<string, unknown> = { status: to }
+  if (to === 'Cancelled' && by === 'cafe') {
+    const reason = (opts.reason ?? 'Out of stock').trim()
+    const code = CANCEL_CODES[reason.toLowerCase()]
+    patch.cancelled_by = 'cafe'
+    patch.cancel_reason_code = code ?? 'other'
+    patch.cancel_reason = reason
+  }
+  await write(() => db().from('orders').update(patch).eq('order_id', o.id).select('order_id'), true)
 }
 
 /** Staff can take back an Accept within 5 seconds (FR-STF-06) */
-export function undoAccept(number: number) {
-  update((s) => {
-    const o = s.orders.find((x) => x.number === number)
-    if (!o || o.status !== 'Accepted') throw new Error('Nothing to undo')
-    const timeline = o.timeline.slice(0, -1)
-    return {
-      orders: s.orders.map((x) => (x.number === number ? { ...o, status: 'Received', timeline } : x)),
-      notifications: s.notifications.filter((n) => !(n.event === 'accepted' && n.to.endsWith(`n=${number}`))),
-    }
-  })
+export async function undoAccept(number: number) {
+  const o = orderByNumber(number)
+  await write(() => db().from('orders').update({ status: 'Received' }).eq('order_id', o.id).select('order_id'), true)
 }
 
 /** FR-STF-08: only Accepted or Preparing orders can be marked delayed */
-export function markDelayed(number: number, minutes: number, actor = 'Staff') {
-  update((s) => {
-    const o = s.orders.find((x) => x.number === number)
-    if (!o || (o.status !== 'Accepted' && o.status !== 'Preparing')) throw new Error('Only Accepted or Preparing orders can be delayed')
-    const now = Date.now()
-    const next: Order = {
-      ...o,
-      isDelayed: true,
-      eta: now + minutes * MIN,
-      timeline: [...o.timeline, ev(`Delayed: new estimate ${minutes} min`, now, actor)],
-    }
-    return {
-      orders: s.orders.map((x) => (x.number === number ? next : x)),
-      notifications: notify(s, 'delayed', next),
-    }
-  })
+export async function markDelayed(number: number, minutes: number) {
+  const o = orderByNumber(number)
+  await write(
+    () => db().from('orders').update({ is_delayed: true, eta: new Date(Date.now() + minutes * MIN).toISOString() }).eq('order_id', o.id).select('order_id'),
+    true,
+  )
 }
 
-/** FR-STF-10: internal notes, with author and time, never shown to customers */
-export function addInternalNote(number: number, text: string, author: string) {
-  update((s) => ({
-    orders: s.orders.map((x) =>
-      x.number === number ? { ...x, internalNotes: [...x.internalNotes, { author, at: Date.now(), text }] } : x,
-    ),
-  }))
+/** FR-STF-10: internal notes, with author and time (stamped by the database), never shown to customers */
+export async function addInternalNote(number: number, text: string) {
+  const o = orderByNumber(number)
+  await write(() => db().from('internal_note').insert({ order_id: o.id, body: text }))
 }
 
-/* ---------- Placing orders ---------- */
+/* ---------- Points, vouchers, notifications (customer) ---------- */
 
-export type NewOrder = Omit<
-  Order,
-  'number' | 'status' | 'placedAt' | 'timeline' | 'internalNotes' | 'eta' | 'paymentStatus' | 'paymentRef' | 'pointsCredited'
->
-
-const nextNumber = (s: Shared) => Math.max(1042, ...s.orders.map((o) => o.number)) + 1
-
-function build(s: Shared, input: NewOrder, now: number, by: string): Order {
-  const number = nextNumber(s)
-  const paid = input.payment !== COUNTER
-  return {
-    ...input,
-    number,
-    status: 'Received',
-    placedAt: now,
-    eta: now + (input.fulfillment === 'delivery' ? DELIVERY_MINUTES : s.store.prepMinutes) * MIN,
-    paymentStatus: paid ? 'Paid' : 'Pay at counter',
-    paymentRef: paid ? `PAY-${number}-${id().slice(0, 4).toUpperCase()}` : undefined,
-    timeline: [ev(input.source === 'automated' ? 'Order placed by automation' : 'Order placed', now, by, 'Received')],
-    internalNotes: [],
-  }
+/** FR-LOY-05: points out and voucher in, in one database transaction */
+export async function redeem(rewardId: string) {
+  await write(() => db().rpc('redeem_reward', { p_reward_id: rewardId }))
 }
 
-/**
- * Places an order. A retried submission with the same attempt id returns the order it already
- * made instead of creating a second one (NFR-REL-01, IR-08). Marks the reward voucher and the
- * promo code as used in the same write.
- */
-export function createOrder(input: NewOrder, attemptId?: string): Order {
-  const existing = attemptId ? getShared().orders.find((o) => o.attemptId === attemptId) : undefined
-  if (existing) return existing
-  let made: Order | undefined
-  update((s) => {
-    const again = attemptId ? s.orders.find((o) => o.attemptId === attemptId) : undefined
-    if (again) {
-      made = again
-      return {}
-    }
-    const o = { ...build(s, input, Date.now(), input.customerName), attemptId }
-    made = o
-    const patch: Partial<Shared> = { orders: [...s.orders, o], notifications: notify(s, 'received', o) }
-    if (o.rewardId) patch.myRewards = s.myRewards.map((m) => (m.rewardId === o.rewardId && m.status === 'Redeemed' ? { ...m, status: 'Used' } : m))
-    if (o.promoCode) patch.promoUses = [...s.promoUses, o.promoCode]
-    return patch
-  })
-  return made!
-}
-
-/* ---------- Points and vouchers ---------- */
-
-export function setPoints(n: number | ((p: number) => number)) {
-  quietly((s) => ({ points: typeof n === 'function' ? n(s.points) : n }))
-}
-
-export function setMyRewards(m: MyReward[] | ((p: MyReward[]) => MyReward[])) {
-  quietly((s) => ({ myRewards: typeof m === 'function' ? m(s.myRewards) : m }))
-}
-
-/** FR-LOY-05: points out and voucher in, in one write */
-export function redeem(rewardId: string, cost: number, name: string) {
-  quietly((s) => ({
-    points: s.points - cost,
-    myRewards: [{ rewardId, status: 'Redeemed' }, ...s.myRewards.filter((r) => r.rewardId !== rewardId)],
-    pointsLog: [{ id: `redeem-${id()}`, description: name, at: Date.now(), points: -cost }, ...s.pointsLog],
-  }))
-}
-
-/* ---------- Notifications (customer) ---------- */
-
-export function markNoteRead(noteId: string) {
-  quietly((s) => ({ notifications: s.notifications.map((n) => (n.id === noteId ? { ...n, read: true } : n)) }))
-}
-
-/* ---------- Store settings ---------- */
-
-export function setStore(change: Partial<StoreSettings> | ((s: StoreSettings) => Partial<StoreSettings>)) {
-  update((s) => ({ store: { ...s.store, ...(typeof change === 'function' ? change(s.store) : change) } }))
-}
-
-export function setTemplate(t: Template) {
-  update((s) => ({ templates: s.templates.map((x) => (x.event === t.event ? t : x)) }))
-}
-
-/* ---------- Staff sign-in (FR-STF-01) ---------- */
-
-export type LoginResult = { ok: true } | { ok: false; lockedUntil: number; left: number }
-
-export function staffLogin(username: string, password: string): LoginResult {
-  const s = getShared().staff
-  const now = Date.now()
-  if (s.lockedUntil > now) return { ok: false, lockedUntil: s.lockedUntil, left: 0 }
-  const ok = [STAFF_LOGIN.username, 'staff@megscafe.ph'].includes(username.trim().toLowerCase()) && password === STAFF_LOGIN.password
-  if (ok) {
-    quietly((x) => ({ staff: { ...x.staff, signedIn: true, fails: 0, lockedUntil: 0 } }))
-    return { ok: true }
-  }
-  const fails = (s.lockedUntil && s.lockedUntil <= now ? 0 : s.fails) + 1
-  const lockedUntil = fails >= LOCK_AFTER ? now + LOCK_MINUTES * MIN : 0
-  quietly((x) => ({ staff: { ...x.staff, fails: lockedUntil ? 0 : fails, lockedUntil } }))
-  return { ok: false, lockedUntil, left: LOCK_AFTER - fails }
-}
-
-export const staffLogout = () => quietly((s) => ({ staff: { ...s.staff, signedIn: false } }))
-export const staffSignIn = () => quietly((s) => ({ staff: { ...s.staff, signedIn: true, lockedUntil: 0, fails: 0 } }))
-
-/* ---------- Customer sign-in lockout (FR-ACC-07) ---------- */
-
-export const CUSTOMER_PASSWORD = 'password1'
-
-export function customerLogin(account: string, password: string): LoginResult {
-  const key = account.trim().toLowerCase()
-  const now = Date.now()
-  const a = getShared().loginAttempts[key] ?? { fails: 0, lockedUntil: 0 }
-  if (a.lockedUntil > now) return { ok: false, lockedUntil: a.lockedUntil, left: 0 }
-  if (password === CUSTOMER_PASSWORD) {
-    quietly((s) => ({ loginAttempts: { ...s.loginAttempts, [key]: { fails: 0, lockedUntil: 0 } } }))
-    return { ok: true }
-  }
-  const fails = (a.lockedUntil && a.lockedUntil <= now ? 0 : a.fails) + 1
-  const lockedUntil = fails >= LOCK_AFTER ? now + LOCK_MINUTES * MIN : 0
-  quietly((s) => ({ loginAttempts: { ...s.loginAttempts, [key]: { fails: lockedUntil ? 0 : fails, lockedUntil } } }))
-  return { ok: false, lockedUntil, left: LOCK_AFTER - fails }
-}
-
-/* ---------- Automated orders (FR-AOM-01 … 05) ---------- */
-
-const automationOrder = (s: Shared, a: Automation): NewOrder => {
-  const lines = a.lines.map((l) => line(l.productId, l.options, l.qty))
-  const subtotal = sum(lines)
-  const deliveryFee = a.fulfillment === 'delivery' ? s.store.deliveryFee : 0
-  return {
-    customerId: a.customerId,
-    customerName: a.customer,
-    customerPhone: a.phone,
-    fulfillment: a.fulfillment,
-    lines,
-    subtotal,
-    discount: 0,
-    deliveryFee,
-    total: subtotal + deliveryFee,
-    payment: 'Saved card',
-    points: Math.floor(subtotal + deliveryFee),
-    source: 'automated',
-  }
-}
-
-/** What stops an automated order right now, if anything */
-function blocker(s: Shared, a: Automation): { code: string; message: string; reason: string } | null {
-  const os = openState(s.store)
-  if (!os.open) return { code: 'STORE_CLOSED', message: 'STORE_CLOSED: not accepting orders', reason: 'The cafe is not accepting orders' }
-  const out = a.lines.map((l) => productById(l.productId)).find((p) => !p || !p.available)
-  if (out !== undefined)
-    return { code: 'ITEM_UNAVAILABLE', message: `ITEM_UNAVAILABLE: ${out?.name ?? 'unknown item'}`, reason: `${out?.name ?? 'An item'} is sold out` }
-  return null
-}
-
-/** Runs the automation's checks again: on success it places a real order in the queue */
-export function runAutomation(automationId: string, label = 'Retried by staff') {
-  update((s) => {
-    const a = s.automations.find((x) => x.id === automationId)
-    if (!a) throw new Error('Automation not found')
-    const now = Date.now()
-    const stop = blocker(s, a)
-    if (stop) {
-      const failed: Automation = {
-        ...a,
-        state: 'failed',
-        reason: stop.reason,
-        response: { code: stop.code, message: stop.message },
-        timeline: [...a.timeline, { label, at: now }, { label: `Failed: ${stop.reason.toLowerCase()}`, at: now }],
-      }
-      return { automations: s.automations.map((x) => (x.id === a.id ? failed : x)) }
-    }
-    const o = build(s, automationOrder(s, a), now, 'Automation')
-    const done: Automation = {
-      ...a,
-      state: 'succeeded',
-      orderNumber: o.number,
-      customerMessage: `Your ${a.rule.toLowerCase()} #${o.number} is in.`,
-      timeline: [...a.timeline, { label, at: now }, { label: `Order #${o.number} created`, at: now }],
-    }
-    return {
-      orders: [...s.orders, o],
-      automations: s.automations.map((x) => (x.id === a.id ? done : x)),
-      notifications: notify(s, 'received', o),
-    }
-  })
-}
-
-/** Convert to manual: staff take the order themselves, past the failed check */
-export function convertAutomation(automationId: string, actor: string) {
-  update((s) => {
-    const a = s.automations.find((x) => x.id === automationId)
-    if (!a) throw new Error('Automation not found')
-    const now = Date.now()
-    const o = build(s, automationOrder(s, a), now, actor)
-    o.timeline[0] = ev('Order placed manually from a failed automation', now, actor, 'Received')
-    const done: Automation = {
-      ...a,
-      handled: 'manual',
-      orderNumber: o.number,
-      timeline: [...a.timeline, { label: `Converted to manual order #${o.number} by ${actor}`, at: now }],
-    }
-    return { orders: [...s.orders, o], automations: s.automations.map((x) => (x.id === a.id ? done : x)) }
-  })
-}
-
-let simCount = 0
-/** Demo: a standing rule fires now; it processes for a moment, then succeeds or fails on the live checks */
-export function simulateAutomation() {
-  const rule = simulatedRules[simCount++ % simulatedRules.length]
-  const now = Date.now()
-  const a: Automation = { ...rule, id: `auto-${id()}`, at: now, state: 'processing', timeline: [{ label: 'Rule fired', at: now }] }
-  update((s) => ({ automations: [a, ...s.automations] }))
-  setTimeout(() => tryRun(a.id), 2500)
-}
-const tryRun = (automationId: string) => {
+export async function markNoteRead(noteId: string) {
+  set({ notifications: state.notifications.map((n) => (n.id === noteId ? { ...n, read: true } : n)) })
   try {
-    runAutomation(automationId, 'Checks run')
+    await write(() => db().from('notification').update({ read_at: new Date().toISOString() }).eq('notification_id', noteId))
   } catch (err) {
-    console.warn('MEGS: automation run failed', err)
+    console.warn('MEGS: could not mark read', err)
   }
 }
+
+/* ---------- Customer profile, preferences, addresses, payment methods (FR-PRF) ---------- */
+
+export async function saveProfile(patch: Partial<{ full_name: string; email: string | null; birthday: string | null; default_drink_size: string | null; notify_order_updates: boolean; notify_promotions: boolean; notify_rewards_reminders: boolean }>) {
+  const uid = state.customer?.id
+  if (!uid) throw new Error('Log in first.')
+  await write(() => db().from('customer').update(patch).eq('customer_id', uid).select('customer_id'), true)
+}
+
+export async function saveAddress(a: Address) {
+  const uid = state.customer?.id
+  if (!uid) throw new Error('Log in first.')
+  const parts = splitStreet(a.street)
+  const row = {
+    customer_id: uid,
+    label: a.label,
+    recipient_name: a.name.trim(),
+    ...parts,
+    mobile_no: a.phone ? toE164(a.phone) : null,
+    notes: a.notes?.trim() || null,
+  }
+  const exists = state.addresses.some((x) => x.id === a.id)
+  const data = await write(() =>
+    exists ? db().from('address').update(row).eq('address_id', a.id).select('address_id') : db().from('address').insert(row).select('address_id'),
+  )
+  return ((data as { address_id: string }[] | null)?.[0]?.address_id ?? a.id) as string
+}
+
+export async function addPaymentMethod(last4: string, makeDefault: boolean) {
+  const uid = state.customer?.id
+  if (!uid) throw new Error('Log in first.')
+  // NFR-SEC-03: only a provider token and the last four digits; test tokens until a gateway is chosen
+  if (makeDefault) await db().from('payment_method').update({ is_default: false }).eq('customer_id', uid).eq('is_default', true)
+  await write(() =>
+    db()
+      .from('payment_method')
+      .insert({ customer_id: uid, type: 'card', provider: 'test', provider_token: `tok_test_${last4}_${Date.now().toString(36)}`, brand: 'Card', last4, is_default: makeDefault }),
+  )
+}
+
+/* ---------- Store settings and templates (staff) ---------- */
+
+export async function setStore(change: Partial<StoreSettings> | ((s: StoreSettings) => Partial<StoreSettings>)) {
+  const next = typeof change === 'function' ? change(state.store) : change
+  const row: Record<string, unknown> = {}
+  if (next.acceptingOrders !== undefined) row.accepting_orders = next.acceptingOrders
+  if (next.hours !== undefined) row.opening_hours = next.hours
+  if (next.prepMinutes !== undefined) row.default_prep_minutes = next.prepMinutes
+  if (next.deliveryEnabled !== undefined) row.delivery_enabled = next.deliveryEnabled
+  if (next.deliveryFee !== undefined) row.delivery_fee = Math.round(next.deliveryFee * 100)
+  if (next.chime !== undefined) row.new_order_chime = next.chime
+  if (next.autoAdvance !== undefined) row.auto_advance_demo = next.autoAdvance
+  if (next.demoMode !== undefined) row.demo_mode = next.demoMode
+  if (Object.keys(row).length) {
+    await write(() => db().from('store_settings').update(row).eq('settings_id', state.store.settingsId).select('settings_id'), true)
+  }
+  // FR-OPS-04: sold-out toggles are menu rows
+  if (next.availability) {
+    for (const p of products) {
+      const want = next.availability[p.id] ?? { available: true }
+      if (want.available !== p.available || (!want.available && (want.reason ?? '') !== (p.unavailableReason ?? ''))) {
+        await write(
+          () => db().from('menu_item').update({ is_available: want.available, unavailable_reason: want.available ? null : want.reason || null }).eq('item_id', p.id).select('item_id'),
+          true,
+        )
+      }
+    }
+  }
+  await refreshCatalog()
+}
+
+export async function setTemplate(t: Template) {
+  await write(
+    () => db().from('response_template').update({ title: t.title, body: t.body, enabled: t.enabled }).eq('event', DB_EVENT[t.event]).select('template_id'),
+    true,
+  )
+}
+
+/* ---------- Sign-in (FR-ACC-06/07, FR-STF-01): the lockout is kept by the database ---------- */
+
+export type LoginResult = { ok: true } | { ok: false; lockedUntil: number; left: number; notStaff?: boolean; offline?: boolean }
+
+async function signIn(id: string, password: string, audience: 'customer' | 'staff'): Promise<LoginResult> {
+  const c = db()
+  const key = id.trim()
+  const { data: locked, error: lockErr } = await c.rpc('login_locked_until', { p_identifier: key, p_audience: audience })
+  if (lockErr) return { ok: false, lockedUntil: 0, left: LOCK_AFTER, offline: true }
+  if (locked) return { ok: false, lockedUntil: Date.parse(locked as string), left: 0 }
+  const { data: email } = await c.rpc(audience === 'staff' ? 'staff_login_address' : 'customer_login_address', { p_identifier: key })
+  const res = email ? await c.auth.signInWithPassword({ email: email as string, password }) : null
+  if (res && !res.error) {
+    await c.rpc('login_succeeded', { p_identifier: key, p_audience: audience })
+    return { ok: true }
+  }
+  const { data: f } = await c.rpc('login_failed', { p_identifier: key, p_audience: audience })
+  const r = (f ?? {}) as { left?: number; locked_until?: string | null }
+  return { ok: false, lockedUntil: r.locked_until ? Date.parse(r.locked_until) : 0, left: r.left ?? 0 }
+}
+
+export async function customerLogin(account: string, password: string): Promise<LoginResult> {
+  const r = await signIn(account, password, 'customer')
+  if (r.ok) await reloadShared()
+  return r
+}
+
+export async function staffLogin(username: string, password: string): Promise<LoginResult> {
+  const r = await signIn(username, password, 'staff')
+  if (!r.ok) {
+    set({ staff: { ...state.staff, lockedUntil: r.lockedUntil } })
+    return r
+  }
+  await reloadShared()
+  if (!state.staff.signedIn) {
+    await db().auth.signOut()
+    return { ok: false, lockedUntil: 0, left: LOCK_AFTER, notStaff: true }
+  }
+  return r
+}
+
+export async function staffLogout() {
+  await db().auth.signOut()
+  await reloadShared()
+}
+
+/** FR-ACC-02/03: creates the account once the (simulated) code step passes */
+export async function customerSignUp(p: { name: string; phone: string; email: string; password: string }) {
+  const mobile = toE164(p.phone)
+  const { error } = await db().auth.signUp({
+    email: loginAddress(mobile),
+    password: p.password,
+    options: { data: { account_type: 'customer', full_name: p.name.trim(), mobile_no: mobile, contact_email: p.email.trim(), terms_accepted: true } },
+  })
+  if (error) throw problem(error, /registered|exists/i.test(error.message) ? 'This number already has an account. Log in instead.' : "Couldn't create your account. Try again.")
+  await reloadShared()
+}
+
+/** 3.2.1.5: a number that already has an account gets a link to Log in */
+export async function isMobileRegistered(phone: string) {
+  const { data } = await db().rpc('is_mobile_registered', { p_mobile: phone })
+  return !!data
+}
+
+export async function customerLogout() {
+  await db().auth.signOut()
+  await reloadShared()
+}
+
+/* ---------- Demo tools (only while demo mode is on) ---------- */
+
+/** ?demo=member and the screen index: signs this tab in as Maria */
+export async function demoSignInCustomer() {
+  if (state.customer || !state.store.demoMode) return
+  await customerLogin(DEMO_CUSTOMER.mobile, DEMO_CUSTOMER.password)
+}
+
+/** The screen index's staff entries: signs the console in as the demo staff member */
+export async function staffSignIn() {
+  if (state.staff.signedIn || !state.store.demoMode) return
+  await staffLogin(STAFF_LOGIN.username, STAFF_LOGIN.password)
+}
+
+/** Screen index: puts the demo order into a state (pickup or delivery) */
+export async function demoSetOrderState(number: number, status: OrderStatus, fulfillment?: Fulfillment) {
+  await write(() => db().rpc('demo_set_order_state', { p_order_no: number, p_status: status, p_fulfillment: fulfillment ?? null }))
+}
+
+/** Screen index: sets the demo customer's balance (an adjustment keeps the ledger whole) */
+export async function setPoints(n: number) {
+  await write(() => db().rpc('demo_set_points', { p_points: n }))
+}
+
+/** Staff console → Settings → Reset demo data: re-seeds the demo (demo-reset Edge Function) */
+export async function resetDemoData() {
+  const { error } = await callFunction('demo-reset', {})
+  if (error) throw new Error(error.message)
+  await refreshCatalog()
+  await reloadShared()
+}
+
+/* ---------- Automated orders (FR-AOM-01 … 05), run by the staff-automations function ---------- */
+
+async function automation(action: 'simulate' | 'retry' | 'convert', id?: string) {
+  if (failNext) {
+    failNext = false
+    throw new Error('Simulated write failure')
+  }
+  const { error } = await callFunction('staff-automations', { action, id })
+  if (error) throw new Error(error.message)
+  await reloadShared()
+}
+export const runAutomation = (automationId: string) => automation('retry', automationId)
+export const convertAutomation = (automationId: string) => automation('convert', automationId)
+export const simulateAutomation = () => automation('simulate')
 
 /* ---------- Demo auto-advance ---------- */
 
 const AUTO_EVERY = 8000
 
-/** When the staff "Auto-advance orders (demo)" switch is on, every open order moves on a step every 8 s.
- *  Mounted in both apps; each step is re-checked against the saved copy, so two tabs don't double-step. */
+/** When the staff "Auto-advance orders (demo)" switch is on, the open console moves every open order on a
+ *  step every 8 s, as real updates the customer app follows live. Runs in the staff console only. */
 export function useAutoAdvance() {
   useEffect(() => {
     const t = setInterval(() => {
       const s = getShared()
-      if (!s.store.autoAdvance) return
+      if (!isStaffTab() || !s.staff.signedIn || !s.store.autoAdvance) return
       const now = Date.now()
       for (const o of s.orders) {
         const to = NEXT[o.status][0]
         if (!to || to === 'Cancelled') continue
         const last = o.timeline[o.timeline.length - 1]?.at ?? o.placedAt
         if (now - last < AUTO_EVERY) continue
-        try {
-          const fresh = load().orders.find((x) => x.number === o.number)
-          if (fresh?.status !== o.status) continue
-          moveOrder(o.number, to, 'cafe', { actor: 'Demo auto-advance' })
-        } catch {
-          /* another tab moved it first */
-        }
+        moveOrder(o.number, to, 'cafe').catch(() => {
+          /* another console moved it first */
+        })
       }
     }, 1000)
     return () => clearInterval(t)
   }, [])
 }
 
-/* ---------- Reset and delete ---------- */
+/* ---------- Account deletion and data export (FR-ACC-11, NFR-SEC-07) ---------- */
 
-/** Keys that belong to the cafe, not the customer: kept when the customer deletes their account */
-const CAFE_KEYS: (keyof Shared)[] = ['orders', 'store', 'templates', 'automations', 'staff']
-
-export function deleteCustomerData() {
+/** Deletes the account: the cafe keeps anonymized order records (SRS 3.8) */
+export async function deleteCustomerData() {
+  const { error } = await callFunction('delete-account', {})
+  if (error) throw new Error(error.message)
+  await db().auth.signOut()
   try {
-    // Onboarding was seen on this phone, so a deleted account lands on Welcome, not the slides
-    const keep = new Set([...CAFE_KEYS.map((k) => PREFIX + k), PREFIX + 'onboarded'])
-    Object.keys(window.localStorage)
-      .filter((k) => k.startsWith(PREFIX) && !keep.has(k))
-      .forEach((k) => window.localStorage.removeItem(k))
-    // An empty account, not the demo's sample points, vouchers and notifications
-    const empty: Partial<Shared> = { points: 0, myRewards: [], promoUses: [], pointsLog: [], notifications: [], loginAttempts: {} }
-    for (const [k, v] of Object.entries(empty)) window.localStorage.setItem(PREFIX + k, JSON.stringify(v))
-    // The cafe keeps its order records, with the customer's name, phone and address taken off
-    const orders = load().orders.map((o) =>
-      o.customerId === CUSTOMER_ID
-        ? { ...o, customerId: 'deleted', customerName: 'Deleted customer', customerPhone: '—', address: undefined }
-        : o,
-    )
-    window.localStorage.setItem(PREFIX + 'orders', JSON.stringify(orders))
-    window.localStorage.setItem(PREFIX + 'lastOrderNumber', 'null')
+    Object.keys(localStorage)
+      .filter((k) => k.startsWith('megs.') && k !== 'megs.onboarded' && !k.startsWith('megs.cache.catalog'))
+      .forEach((k) => localStorage.removeItem(k))
   } catch {
     /* nothing saved */
   }
+  await reloadShared()
 }
 
-/** The customer's saved data, for Privacy → Download my data */
+/** The customer's own data, for Privacy → Download my data */
 export function customerDataExport() {
-  const out: Record<string, unknown> = {}
-  const cafe = new Set(CAFE_KEYS.map((k) => PREFIX + k))
-  try {
-    for (const k of Object.keys(window.localStorage).sort()) {
-      if (!k.startsWith(PREFIX) || cafe.has(k)) continue
-      const raw = window.localStorage.getItem(k)
-      try {
-        out[k.slice(PREFIX.length)] = raw === null ? null : JSON.parse(raw)
-      } catch {
-        out[k.slice(PREFIX.length)] = raw
-      }
-    }
-  } catch {
-    /* storage blocked */
-  }
-  // The customer's own orders, without the cafe's internal notes (IR-03)
-  out.orders = state.orders
-    .filter((o) => o.customerId === CUSTOMER_ID)
-    .map((o) => {
+  const s = state
+  return {
+    profile: s.customer,
+    addresses: s.addresses,
+    paymentMethods: s.paymentMethods.map(({ token: _token, ...m }) => {
+      void _token
+      return m
+    }),
+    points: s.points,
+    pointsHistory: s.pointsLog,
+    rewards: s.myRewards,
+    notifications: s.notifications,
+    // The customer's own orders, without anything staff-only (IR-03)
+    orders: s.orders.map((o) => {
       const copy: Partial<Order> = { ...o }
       delete copy.internalNotes
+      delete copy.paymentRef
       return copy
-    })
-  return out
+    }),
+  }
 }

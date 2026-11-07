@@ -29,7 +29,7 @@ const rowIcons: Record<string, IconName> = {
 }
 import { useOverlay } from '../overlays/OverlayHost'
 import { DRINK_SIZES, resetDemo, useApp } from '../state/AppState'
-import { customerDataExport, markNoteRead, useShared, type CustomerNote } from '../state/shared'
+import { customerDataExport, markNoteRead, saveProfile, useShared, type CustomerNote } from '../state/shared'
 import { isIos, promptInstall, usePwa } from '../state/pwa'
 import './profile.css'
 
@@ -164,11 +164,14 @@ function Toast({ children }: { children: ReactNode }) {
 /** C-28 Edit Profile — Default and Saved. */
 export function EditProfile() {
   const [params] = useSearchParams()
-  const { name, setName, phone, defaultSize, setDefaultSize } = useApp()
+  const { name, phone, defaultSize } = useApp()
+  const { customer } = useShared()
   const [draft, setDraft] = useState(name)
-  const [email, setEmail] = useState('maria.santos@gmail.com')
-  const [birthday, setBirthday] = useState('')
+  const [email, setEmail] = useState(customer?.email ?? '')
+  const [birthday, setBirthday] = useState(customer?.birthday ?? '')
   const [size, setSize] = useState(defaultSize)
+  const [busy, setBusy] = useState(false)
+  const [error, setError] = useState('')
   const [cafe, setCafe] = useState("MEGS' Cafe")
   const [saved, setSaved] = useState(params.get('state') === 'saved')
 
@@ -184,19 +187,38 @@ export function EditProfile() {
       topBar={<TopBar title="Edit profile" />}
       footer={
         <Button
-          disabled={!draft.trim()}
-          onClick={() => {
-            setName(draft.trim())
-            setDefaultSize(size)
-            setSaved(true)
+          disabled={!draft.trim() || busy}
+          aria-busy={busy}
+          onClick={async () => {
+            // FR-PRF-02 / 3.2.10.5: a failed save keeps the edited values and says so
+            setBusy(true)
+            setError('')
+            try {
+              await saveProfile({
+                full_name: draft.trim(),
+                email: email.trim() || null,
+                birthday: birthday || null,
+                default_drink_size: size || null,
+              })
+              setSaved(true)
+            } catch (err) {
+              setError(err instanceof Error ? err.message : "Couldn't save. Try again.")
+            } finally {
+              setBusy(false)
+            }
           }}
         >
-          Save
+          {busy ? 'Saving…' : 'Save'}
         </Button>
       }
       overlay={saved && <Toast>Profile saved</Toast>}
     >
       <Content>
+        {error && (
+          <Row>
+            <Alert tone="danger">{/duplicate|unique/i.test(error) ? 'That email is already used by another account.' : error}</Alert>
+          </Row>
+        )}
         <Row>
           <TextField label="Name" value={draft} onChange={(e) => setDraft(e.target.value)} autoComplete="name" />
         </Row>
@@ -209,7 +231,7 @@ export function EditProfile() {
         <Row>
           <TextField
             label="Birthday (optional)"
-            placeholder="Enter birthday"
+            type="date"
             helper="Used for birthday offers"
             value={birthday}
             onChange={(e) => setBirthday(e.target.value)}
@@ -525,6 +547,8 @@ export function AddPaymentMethod() {
   const [holder, setHolder] = useState('')
   const [expiry, setExpiry] = useState('')
   const [makeDefault, setMakeDefault] = useState(false)
+  const [busy, setBusy] = useState(false)
+  const [error, setError] = useState('')
   const digits = number.replace(/\D/g, '')
   const valid = digits.length >= 12 && holder.trim() && /^\d{2}\s*\/\s*\d{2}$/.test(expiry.trim())
 
@@ -534,13 +558,22 @@ export function AddPaymentMethod() {
       topBar={<TopBar title="Add payment method" />}
       footer={
         <Button
-          disabled={!valid}
-          onClick={() => {
-            addPaymentMethod({ label: `Card ending ${digits.slice(-4)}` }, makeDefault)
-            navigate(-1)
+          disabled={!valid || busy}
+          aria-busy={busy}
+          onClick={async () => {
+            // NFR-SEC-03 / IR-01: only the last four digits and a token are kept, never the card number
+            setBusy(true)
+            setError('')
+            try {
+              await addPaymentMethod({ label: `Card ending ${digits.slice(-4)}` }, makeDefault)
+              navigate(-1)
+            } catch (err) {
+              setError(err instanceof Error ? err.message : "Couldn't save the card. Try again.")
+              setBusy(false)
+            }
           }}
         >
-          Save
+          {busy ? 'Saving…' : 'Save'}
         </Button>
       }
     >
@@ -548,6 +581,11 @@ export function AddPaymentMethod() {
         <Row>
           <Alert>Placeholder form. To be replaced by the payment provider SDK.</Alert>
         </Row>
+        {error && (
+          <Row>
+            <Alert tone="danger">{error}</Alert>
+          </Row>
+        )}
         <Row>
           <p className="t-body-sm muted">
             Demo test cards: a number ending <span className="num">0002</span> is always declined; one ending{' '}

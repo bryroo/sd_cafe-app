@@ -18,7 +18,7 @@ import { Alert, OfflineBanner } from '../components/order'
 import { toIntl, useApp } from '../state/AppState'
 import { useOverlay } from '../overlays/OverlayHost'
 import { retryConnection, useOnline } from '../state/online'
-import { customerLogin, getShared } from '../state/shared'
+import { customerLogin, customerSignUp, isMobileRegistered, useShared } from '../state/shared'
 import lineupPhoto from '../assets/photos/iced-coffee-lineup.webp'
 import wingsPhoto from '../assets/photos/wings-and-drinks.webp'
 import logoWallPhoto from '../assets/photos/logo-wall-breakfast.webp'
@@ -46,12 +46,15 @@ const markOnboarded = () => {
 export function Splash() {
   const navigate = useNavigate()
   const { session } = useApp()
+  // The saved session is checked against the database before choosing where to go
+  const { ready } = useShared()
   useEffect(() => {
+    if (!ready) return
     // SRS FR-ACC-09 / FR-ACC-10: Home for a valid session, onboarding on the first launch only, otherwise Welcome
     const next = session === 'member' ? '/home' : onboarded() ? '/welcome' : '/onboarding/1'
-    const t = setTimeout(() => navigate(next, { replace: true }), 1600)
+    const t = setTimeout(() => navigate(next, { replace: true }), 1200)
     return () => clearTimeout(t)
-  }, [navigate, session])
+  }, [navigate, session, ready])
 
   return (
     <Screen theme="dark" bg="secondary" bodyClassName="splash">
@@ -197,9 +200,11 @@ export function Welcome() {
   )
 }
 
-/** The demo account's number: signing up with it again is caught */
-const REGISTERED_PHONE = '0917 123 4567'
 const digits = (v: string) => v.replace(/\D/g, '').replace(/^(63|0)/, '')
+
+/** The sign-up form until the code step creates the account. Kept in memory only, never saved:
+ *  it holds the password. */
+let pendingSignUp: { name: string; phone: string; email: string; password: string } | null = null
 
 /** C-04 Sign Up */
 export function SignUp() {
@@ -212,8 +217,20 @@ export function SignUp() {
   // DPA: consent is the customer's to give, so the box starts unticked
   const [agreed, setAgreed] = useState(false)
   const strong = password.length >= 8 && /\d/.test(password)
-  // 3.2.1.5: a number that already has an account gets a link to Log in instead
-  const taken = digits(mobile) === digits(REGISTERED_PHONE)
+  // 3.2.1.5: a number that already has an account gets a link to Log in instead (asked of the database)
+  const [taken, setTaken] = useState(false)
+  useEffect(() => {
+    setTaken(false)
+    if (digits(mobile).length !== 10) return
+    let live = true
+    const t = setTimeout(() => {
+      isMobileRegistered(mobile).then((yes) => live && setTaken(yes), () => {})
+    }, 300)
+    return () => {
+      live = false
+      clearTimeout(t)
+    }
+  }, [mobile])
   const valid = name.trim() !== '' && digits(mobile).length >= 10 && !taken && strong && agreed
 
   return (
@@ -224,6 +241,7 @@ export function SignUp() {
           disabled={!valid || !online}
           onClick={() => {
             setPhone(mobile)
+            pendingSignUp = { name, phone: mobile, email, password }
             navigate('/verify')
           }}
         >
@@ -301,12 +319,27 @@ export function Verification() {
   const { phone, setSession, setFirstLaunch } = useApp()
   const [code, setCode] = useState('')
   const [wait, setWait] = useState(RESEND_AFTER)
+  const [busy, setBusy] = useState(false)
+  const [error, setError] = useState('')
 
-  const verify = () => {
+  // FR-ACC-03: the account is created only once the code is entered (codes are simulated until SMS is on)
+  const verify = async () => {
     if (reset) return navigate('/reset-password')
-    setSession('member')
-    setFirstLaunch(true)
-    navigate('/home', { replace: true })
+    if (!pendingSignUp) return navigate('/sign-up', { replace: true })
+    setBusy(true)
+    setError('')
+    try {
+      await customerSignUp(pendingSignUp)
+      pendingSignUp = null
+      setSession('member')
+      setFirstLaunch(true)
+      navigate('/home', { replace: true })
+    } catch (err) {
+      setCode('')
+      setError(err instanceof Error ? err.message : "Couldn't create your account. Try again.")
+    } finally {
+      setBusy(false)
+    }
   }
 
   // SRS FR-ACC-05: resend only after a 30-second cooldown, showing the time left
@@ -326,8 +359,8 @@ export function Verification() {
     <Screen
       topBar={<TopBar />}
       footer={
-        <Button disabled={code.length < 6} onClick={verify}>
-          Verify
+        <Button disabled={code.length < 6 || busy} onClick={verify} aria-busy={busy}>
+          {busy ? 'Creating your account…' : 'Verify'}
         </Button>
       }
     >
@@ -346,6 +379,11 @@ export function Verification() {
         <Row>
           <OtpInput value={code} onChange={setCode} />
         </Row>
+        {error && (
+          <Row>
+            <Alert tone="danger">{error}</Alert>
+          </Row>
+        )}
         <Row>
           {wait > 0 ? (
             <p className="t-body muted resend" aria-live="polite">
@@ -374,11 +412,12 @@ export function LogIn() {
   const [params] = useSearchParams()
   const { setSession } = useApp()
   const online = useOnline()
-  const [id, setId] = useState(params.get('id') ?? 'maria@email.com')
+  // The demo account (demo-reset seed); the lockout is kept by the database (FR-ACC-07)
+  const [id, setId] = useState(params.get('id') ?? '0917 123 4567')
   const [password, setPassword] = useState(params.get('id') ? '' : 'password1')
   const [error, setError] = useState('')
-  // A lock from an earlier visit still holds
-  const [lockedUntil, setLockedUntil] = useState(() => getShared().loginAttempts[id.trim().toLowerCase()]?.lockedUntil ?? 0)
+  const [busy, setBusy] = useState(false)
+  const [lockedUntil, setLockedUntil] = useState(0)
   const [now, setNow] = useState(Date.now())
   const locked = lockedUntil > now
 
@@ -388,15 +427,19 @@ export function LogIn() {
     return () => clearInterval(t)
   }, [locked])
 
-  const submit = () => {
-    const r = customerLogin(id, password)
+  const submit = async () => {
+    setBusy(true)
+    const r = await customerLogin(id, password)
+    setBusy(false)
     if (r.ok) {
       setSession('member')
       navigate('/home', { replace: true })
       return
     }
     setNow(Date.now())
-    if (r.lockedUntil) {
+    if (r.offline) {
+      setError("Couldn't reach the cafe. Check your connection and try again.")
+    } else if (r.lockedUntil) {
       setLockedUntil(r.lockedUntil)
       setError('')
     } else {
@@ -411,8 +454,8 @@ export function LogIn() {
     <Screen
       topBar={<TopBar />}
       footer={
-        <Button disabled={!id || !password || locked || !online} onClick={submit}>
-          Log in
+        <Button disabled={!id || !password || locked || !online || busy} onClick={submit} aria-busy={busy}>
+          {busy ? 'Logging in…' : 'Log in'}
         </Button>
       }
     >
@@ -427,7 +470,9 @@ export function LogIn() {
         )}
         {params.get('updated') && (
           <Row>
-            <Alert tone="success">Password updated. Log in with your new password.</Alert>
+            <Alert tone="info">
+              Password reset arrives with SMS codes at launch. Your password is unchanged: log in with it as before.
+            </Alert>
           </Row>
         )}
         {locked && (
@@ -509,6 +554,8 @@ export function ForgotPassword() {
 }
 
 /** C-08 Reset Password */
+// While SMS codes are simulated this is a walkthrough: saving changes nothing, because a reset that
+// worked behind a made-up code would let anyone take over any account (spec 2026-11-08, section 3).
 export function ResetPassword() {
   const navigate = useNavigate()
   const [pw, setPw] = useState('password1')

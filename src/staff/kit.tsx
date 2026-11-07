@@ -8,8 +8,9 @@ import { MIN } from '../state/shared'
 
 export type StaffApi = {
   toast: (text: string, action?: { label: string; onClick: () => void }) => void
-  /** Runs a write; on failure shows "Couldn't update. Try again." with Retry, and nothing changes */
-  act: (write: () => void, success?: string) => boolean
+  /** Runs a write (a database call returns a promise); on failure shows "Couldn't update. Try again." with
+   *  Retry, and nothing changes. Returns false only when the write failed straight away. */
+  act: (write: () => void | Promise<unknown>, success?: string) => boolean
   /** Navigate inside the console, asking first if an editor has unsaved changes (OA-04) */
   go: (to: string) => void
   /** An editor reports unsaved changes */
