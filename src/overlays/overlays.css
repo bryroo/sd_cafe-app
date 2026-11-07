@@ -105,6 +105,15 @@
   align-items: center;
   gap: var(--space-8);
 }
+.dialog__order-lines {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
 .dialog__order-pill {
   align-self: flex-start;
   padding: 8px 12px;

@@ -123,7 +123,8 @@ export function OrderTracking() {
   const online = useOnline()
   const { lastOrder, activeOrders, myOrders, notificationsOn } = useApp()
   const n = Number(params.get('n'))
-  const order = (n && myOrders.find((o) => o.number === n)) || lastOrder || activeOrders[0]
+  // A link to a specific order (e.g. from a notification) shows that order or says it's gone, never a different one
+  const order = n ? myOrders.find((o) => o.number === n) : lastOrder || activeOrders[0]
   const forced = params.get('state')
   const updated = useUpdatedAgo()
   const [spinning, setSpinning] = useState(false)
@@ -152,7 +153,9 @@ export function OrderTracking() {
       <Screen topBar={<TopBar title="Order" onBack={() => navigate('/home')} />}>
         <Content>
           <Row>
-            <p className="t-body muted">There's no order to track. Orders you place show up here.</p>
+            <p className="t-body muted">
+              {n ? `We couldn't find order #${n}. It may have been removed.` : "There's no order to track. Orders you place show up here."}
+            </p>
           </Row>
         </Content>
       </Screen>

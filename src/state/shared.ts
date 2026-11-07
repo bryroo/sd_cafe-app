@@ -596,6 +596,32 @@ export const eventFor = (o: Order, to: OrderStatus, by: 'customer' | 'cafe'): Te
   }
 }
 
+/** How far along an order must be for a status message about it to still be true */
+const EVENT_STAGE: Partial<Record<TemplateEvent, OrderStatus>> = {
+  accepted: 'Accepted',
+  preparing: 'Preparing',
+  'ready-pickup': 'Ready',
+  'ready-delivery': 'Ready',
+  completed: 'Completed',
+}
+const STAGES: OrderStatus[] = ['Received', 'Accepted', 'Preparing', 'Ready', 'Completed']
+
+/**
+ * Drops this order's status notifications that are ahead of where the order is now (or that say it was
+ * cancelled when it isn't), e.g. after the demo order is set back to Preparing. A "Ready for pickup"
+ * message must never open an order that is still being prepared.
+ */
+export function notesMatching(notes: CustomerNote[], number: number, status: OrderStatus): CustomerNote[] {
+  const at = STAGES.indexOf(status)
+  return notes.filter((n) => {
+    if (!n.event || !n.to.endsWith(`n=${number}`)) return true
+    if (n.event === 'cancelled-cafe' || n.event === 'cancelled-customer') return status === 'Cancelled'
+    const needs = EVENT_STAGE[n.event]
+    if (!needs) return true
+    return status !== 'Cancelled' && at >= STAGES.indexOf(needs)
+  })
+}
+
 /* ---------- Order transitions (SRS Table 3-1, FR-STF-06) ---------- */
 
 const NEXT: Record<OrderStatus, OrderStatus[]> = {

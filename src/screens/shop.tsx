@@ -398,7 +398,8 @@ export function SectionList() {
 
   const all = productsIn(section.id)
   const hasTemps = all.some((p) => p.temps?.length)
-  const items = all.filter((p) => filter === 'All' || p.kind === 'food' || p.temps?.includes(filter))
+  // Every food item on the menu is served hot, so food sits under Hot and never under Cold
+  const items = all.filter((p) => filter === 'All' || (p.kind === 'food' ? filter === 'Hot' : p.temps?.includes(filter)))
 
   return (
     <Screen topBar={<TopBar title={section.title} />} overlay={<LiveCartBar withNav={false} />}>
@@ -423,7 +424,7 @@ export function SectionList() {
         )}
         {items.length === 0 && (
           <Row>
-            <p className="t-body muted">Nothing {filter.toLowerCase()} in this section right now.</p>
+            <p className="t-body muted">Nothing {filter === 'Iced' ? 'cold' : filter.toLowerCase()} in this section right now.</p>
           </Row>
         )}
       </Content>

@@ -6,6 +6,7 @@ import {
   COUNTER,
   CUSTOMER_ID,
   createOrder,
+  notesMatching,
   openState,
   quietly,
   redeem,
@@ -200,6 +201,8 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
   const [phone, setPhone] = usePersisted('phone', '0917 123 4567')
   const [name, setName] = usePersisted('name', 'Maria Santos')
   const [cart, setCart] = usePersisted<CartLine[]>('cart', demo === 'cart' ? sampleLines : [])
+  // The member's cart while they're logged out, so logging back in picks the order up where they left it
+  const [savedCart, setSavedCart] = usePersisted<CartLine[]>('savedCart', [])
   const [promoDismissed, setPromoDismissed] = usePersisted('promoDismissed', false)
   const [recentSearches, setRecentSearches] = usePersisted('recentSearches', ['Spanish Latte', 'Matcha', 'Carbonara', 'Hot Chocolate'])
   const [fulfillment, setFulfillment] = usePersisted<Fulfillment>('fulfillment', 'pickup')
@@ -344,9 +347,23 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
       return order
     }
 
+    // Logging out keeps the member's cart for this account (not for a guest using the phone);
+    // logging back in brings it back, unless they've started a new cart since.
+    const changeSession = (next: Session) => {
+      if (next === 'signed-out' && session === 'member') {
+        if (cart.length) setSavedCart(cart)
+        setCart([])
+      }
+      if (next === 'member' && session !== 'member' && savedCart.length) {
+        setCart((prev) => (prev.length ? prev : savedCart))
+        setSavedCart([])
+      }
+      setSession(next)
+    }
+
     return {
       session,
-      setSession,
+      setSession: changeSession,
       firstLaunch,
       setFirstLaunch,
       phone,
@@ -435,7 +452,10 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
             cancelReason: status === 'Cancelled' ? 'Out of stock' : undefined,
             cancelledBy: status === 'Cancelled' ? 'cafe' : undefined,
           }
-          return { orders: s.orders.map((x) => (x.number === 1042 ? next : x)) }
+          return {
+            orders: s.orders.map((x) => (x.number === 1042 ? next : x)),
+            notifications: notesMatching(s.notifications, 1042, status),
+          }
         })
         setLastOrderNumber(1042)
       },
@@ -458,6 +478,7 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
     phone,
     name,
     cart,
+    savedCart,
     promoDismissed,
     recentSearches,
     fulfillment,
@@ -472,6 +493,7 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
     setPhone,
     setName,
     setCart,
+    setSavedCart,
     setPromoDismissed,
     setRecentSearches,
     setFulfillment,

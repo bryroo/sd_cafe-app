@@ -393,9 +393,20 @@ function OverlayContent({
           }
         >
           {app.lastOrder && (
-            <span className="dialog__order-pill t-caption">
-              Order #{app.lastOrder.number} · {peso(app.lastOrder.total)}
-            </span>
+            <>
+              <span className="dialog__order-pill t-caption">
+                Order #{app.lastOrder.number} · {peso(app.lastOrder.total)}
+              </span>
+              {/* The items the two orders share, so the customer can see why they're being asked */}
+              <ul className="dialog__order-lines t-body-sm" aria-label="Items in that order">
+                {app.lastOrder.lines.map((l) => (
+                  <li key={l.key}>
+                    {l.qty}× {productById(l.productId)?.name ?? 'Item'}
+                    {l.options.length > 0 && <span className="muted"> · {l.options.join(' · ')}</span>}
+                  </li>
+                ))}
+              </ul>
+            </>
           )}
         </Dialog>
       )
@@ -518,8 +529,8 @@ function OverlayContent({
                 variant="danger"
                 onClick={() => {
                   close()
+                  // The cart is kept for this account and comes back on the next log in
                   app.setSession('signed-out')
-                  app.clearCart()
                   navigate('/welcome', { replace: true })
                 }}
               >
@@ -531,6 +542,12 @@ function OverlayContent({
             </>
           }
         >
+          {app.cartCount > 0 && (
+            <p className="t-body muted">
+              You have {app.cartCount} item{app.cartCount === 1 ? '' : 's'} in your cart. We'll keep them for you, and
+              they'll be back when you log in again.
+            </p>
+          )}
         </Dialog>
       )
   }
