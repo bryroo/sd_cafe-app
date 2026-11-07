@@ -6,6 +6,7 @@ import { ComingSoon } from './screens/shop'
 import { OverlayHost, useOverlay } from './overlays/OverlayHost'
 import { StaffApp } from './staff/StaffApp'
 import { useAutoAdvance, useShared } from './state/shared'
+import { applyUpdate, usePwa } from './state/pwa'
 import './app-shell.css'
 
 /** Shrinks the 852px-tall phone frame to fit short desktop windows. */
@@ -105,6 +106,17 @@ function CustomerNotifier() {
   return null
 }
 
+/** A new version of the app was downloaded: offer the reload instead of switching mid-order. If the
+ *  toast is missed, the new version starts the next time the app is opened from scratch. */
+function AppUpdates() {
+  const { needRefresh } = usePwa()
+  const overlay = useOverlay()
+  useEffect(() => {
+    if (needRefresh) overlay.toast('A new version of the app is ready.', { label: 'Reload', onClick: applyUpdate })
+  }, [needRefresh, overlay])
+  return null
+}
+
 /** The customer app: a 393×852 phone frame plus a screen index for jumping between Figma frames. */
 function CustomerApp() {
   const scale = usePhoneScale()
@@ -112,6 +124,7 @@ function CustomerApp() {
     <AppStateProvider>
       <OverlayHost>
         <CustomerNotifier />
+        <AppUpdates />
         <div className="shell">
           <ScreenIndex />
           <main className="shell__stage">

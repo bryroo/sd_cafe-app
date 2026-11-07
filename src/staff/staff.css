@@ -153,8 +153,11 @@
 /* ---------- Pages ---------- */
 
 .st-content { padding: 24px; }
+/* Fills the space beside the rail; on very wide screens it stops at 1600px and sits centred */
 .st-page {
-  max-width: 1180px;
+  width: 100%;
+  max-width: 1600px;
+  margin-inline: auto;
   display: flex;
   flex-direction: column;
   gap: 20px;
@@ -343,7 +346,7 @@
   background: var(--surface);
   color: var(--muted);
 }
-.st-search input { flex: 1 0 0; min-width: 0; border: 0; background: none; color: var(--ink); font: inherit; outline: none; }
+.st-search input { flex: 1 0 0; align-self: stretch; min-width: 0; border: 0; background: none; color: var(--ink); font: inherit; outline: none; }
 
 .st-chips { display: flex; flex-wrap: wrap; gap: 8px; }
 .st-chip {
@@ -463,7 +466,9 @@ button.st-alert:hover { background: var(--raised); }
   font-weight: 700;
 }
 
-.st-rows { display: flex; flex-direction: column; gap: 8px; }
+/* A row list sizes its rows by its own width, not the window's, so the same rows fit the full-width
+   queue and the half-width "Latest orders" card alike (see the @container rules at the end) */
+.st-rows { display: flex; flex-direction: column; gap: 8px; container: rows / inline-size; }
 .st-row {
   position: relative;
   min-height: 72px;
@@ -746,13 +751,34 @@ button.st-alert:hover { background: var(--raised); }
   .st-cols { grid-template-columns: minmax(0, 1fr); }
 }
 
-@media (max-width: 900px) {
-  .st-row { grid-template-columns: 64px minmax(0, 1fr) auto; }
-  .st-row__mode,
-  .st-row__age { grid-column: 2; }
-  .st-row__status { grid-column: 3; grid-row: 1; }
+/* Rows follow the width of their own list, not the window, so the full-width queue and the half-width
+   "Latest orders" card each get the layout that fits them.
+   Medium lists (a half-width dashboard card, a tablet in portrait): two lines.
+     #1040 | Jen · 2 items · ₱240.00          | New
+           | Pickup   Waiting 13 min           | Accept */
+@container rows (max-width: 760px) {
+  .st-row { grid-template-columns: 64px auto minmax(0, 1fr) auto; row-gap: 4px; }
+  .st-row__num { grid-row: 1 / span 2; align-self: start; padding-top: 2px; }
+  .st-row__who { grid-column: 2 / span 2; grid-row: 1; }
+  .st-row__mode { grid-column: 2; grid-row: 2; }
+  .st-row__age { grid-column: 3; grid-row: 2; }
+  .st-row__status { grid-column: 4; grid-row: 1; justify-content: flex-end; }
+  .st-row__accept { grid-column: 4; grid-row: 2; justify-self: end; }
   .st-tpl,
   .st-avail { grid-template-columns: minmax(0, 1fr) auto; }
+  .st-tpl > *,
+  .st-avail > * { grid-column: auto; grid-row: auto; }
+}
+
+/* Narrow lists (phones): who, mode and wait stack in one column so nothing has to squeeze */
+@container rows (max-width: 480px) {
+  .st-row { grid-template-columns: 64px minmax(0, 1fr) auto; }
+  .st-row__num { grid-row: 1 / span 3; }
+  .st-row__who,
+  .st-row__mode,
+  .st-row__age { grid-column: 2; grid-row: auto; }
+  .st-row__status { grid-column: 3; grid-row: 1; }
+  .st-row__accept { grid-column: 3; grid-row: 2 / span 2; align-self: end; }
 }
 
 /* Under 768px: the bottom bar replaces the rail; inline Accept is a tablet affordance */

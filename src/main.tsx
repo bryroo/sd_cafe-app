@@ -2,16 +2,10 @@ import { StrictMode } from 'react'
 import { createRoot } from 'react-dom/client'
 import './index.css'
 import App from './App.tsx'
+import { startPwa } from './state/pwa'
 
-// The installed app works offline: register the service worker in built versions only, so
-// development always shows the latest code.
-if (import.meta.env.PROD && 'serviceWorker' in navigator) {
-  window.addEventListener('load', () => {
-    navigator.serviceWorker.register('./sw.js').catch(() => {
-      /* not served over https (or blocked): the app still runs, just not offline */
-    })
-  })
-}
+// Offline use, updates and the install prompt (src/state/pwa.ts)
+startPwa()
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>

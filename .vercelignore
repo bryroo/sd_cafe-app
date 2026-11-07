@@ -1,0 +1,6 @@
+# Not needed to build the app: keep them off Vercel's servers
+supabase
+design
+scripts
+dist
+.env*

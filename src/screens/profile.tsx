@@ -21,6 +21,7 @@ const rowIcons: Record<string, IconName> = {
   "About MEGS' Cafe": 'info',
   'Log out': 'logout',
   Language: 'globe',
+  'Install app': 'phone',
   Privacy: 'lock',
   'Delete account': 'trash',
   'E-wallet': 'phone',
@@ -29,6 +30,7 @@ const rowIcons: Record<string, IconName> = {
 import { useOverlay } from '../overlays/OverlayHost'
 import { DRINK_SIZES, resetDemo, useApp } from '../state/AppState'
 import { customerDataExport, markNoteRead, useShared, type CustomerNote } from '../state/shared'
+import { isIos, promptInstall, usePwa } from '../state/pwa'
 import './profile.css'
 
 /** Row / Settings — icon, label, optional value, chevron. Renders as a button only when it does something. */
@@ -254,6 +256,17 @@ export function Settings() {
   const { notificationsOn, setNotificationsOn, promoConsent, setPromoConsent, remindersOn, setRemindersOn } = useApp()
   const denied = permission() === 'denied'
   const [howTo, setHowTo] = useState(false)
+  // Install to the home screen: the browser's dialog where there is one, Safari's steps on iPhone
+  const pwa = usePwa()
+  const [iosSteps, setIosSteps] = useState(false)
+  const offerInstall = !pwa.installed && (pwa.canInstall || isIos())
+  const install = async () => {
+    if (!pwa.canInstall) {
+      setIosSteps((v) => !v)
+      return
+    }
+    if ((await promptInstall()) === 'accepted') overlay.toast("MEGS' Cafe is on your home screen")
+  }
 
   // FR-PRF-05: each toggle saves at once; turning order updates on asks the phone for permission
   const setOrderUpdates = async (v: boolean) => {
@@ -323,7 +336,16 @@ export function Settings() {
         <Group title="General">
           <SettingsRow label="Language" value="English" chevron={false} />
           <SettingsRow label="Privacy" onClick={() => navigate('/settings/privacy')} />
+          {offerInstall && <SettingsRow label="Install app" value="Works offline" onClick={install} />}
         </Group>
+        {offerInstall && iosSteps && (
+          <Row>
+            <p className="t-body-sm muted" role="status">
+              In Safari, tap Share at the bottom of the screen, then Add to Home Screen. MEGS' Cafe then opens full
+              screen from your home screen and works offline.
+            </p>
+          </Row>
+        )}
         <Group title="Demo">
           <SettingsRow
             label="Reset demo data"

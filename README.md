@@ -59,16 +59,27 @@ data** starts it over, including the staff console, the store settings and the o
 
 - **Same Wi-Fi, quickest:** run `npm run dev`, then open the "Network" address Vite prints
   (for example `http://192.168.1.20:5173`) on the phone.
-- **Installed to the home screen, works offline:** build it and put the `dist/` folder on any
-  https host (Netlify, Vercel, Cloudflare Pages or GitHub Pages all have free plans):
+- **Installed to the home screen, works offline:** the live app is at
+  **https://megscafe.vercel.app** (staff console: https://megscafe.vercel.app/#/staff). It is the
+  Vercel project `megscafe`; `vercel.json` sets its build and caching. To publish a new version:
 
   ```bash
-  npm run build
+  npx vercel deploy --prod
   ```
 
-  Open the https address on the phone, then **Share → Add to Home Screen** (iPhone, Safari) or
-  **⋮ → Install app** (Android, Chrome). It opens full screen with the MEGS' icon. Installing and
-  offline use need https; over plain Wi-Fi (`http://`) the app runs but cannot be installed.
+  Open the https address on the phone and install it from **Profile → Settings → Install app**: on
+  Android and desktop Chrome or Edge that opens the install dialog, on iPhone it shows the Safari steps
+  (**Share → Add to Home Screen**). It opens full screen with the MEGS' icon, and long-pressing the
+  icon offers Menu, My orders and Rewards. Installing and offline use need https; over plain Wi-Fi
+  (`http://`) the app runs but cannot be installed. `npx vite preview` on the computer itself counts
+  as secure, so you can try it there.
+
+  It is a progressive web app (`vite-plugin-pwa`, set up in `vite.config.ts`): the first visit
+  downloads the whole app, menu photos included (about 3 MB), so it opens and browses offline from
+  then on. When a new build is deployed, the app shows **A new version of the app is ready ·
+  Reload** instead of switching in the middle of an order. The service worker runs only in built
+  versions; `npm run dev` always shows the latest code. The phone screenshots in Android's install
+  dialog are made with `node scripts/pwa-screenshots.mjs` while `npx vite preview` is running.
 
 Two demo switches, for showing the prototype only (these visits start fresh and ignore saved data):
 
