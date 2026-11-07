@@ -180,7 +180,8 @@ enable_anonymous_sign_ins = false
 # Allow/disallow testing manual linking of accounts
 enable_manual_linking = false
 # Passwords shorter than this value will be rejected as weak. Minimum 6, recommended 8 or more.
-minimum_password_length = 6
+# FR-ACC-08: 8 or more characters (the app also asks for a number)
+minimum_password_length = 8
 # Passwords that do not meet the following requirements will be rejected as weak. Supported values
 # are: `letters_digits`, `lower_upper_letters_digits`, `lower_upper_letters_digits_symbols`
 password_requirements = ""
@@ -420,3 +421,17 @@ enabled = true
 # formatted with uppercase keywords, indent 2, max width 180, trailing commas,
 # and column/key alignment. Set to "null" to emit raw, unformatted SQL.
 # format_options = "{\"keywordCase\":\"upper\",\"indent\":2,\"maxWidth\":180,\"commaStyle\":\"trailing\"}"
+
+# Edge Functions check the caller themselves (supabase/functions/_shared/server.ts → caller()),
+# because the project's new-style API keys are not JWTs.
+[functions.place-order]
+verify_jwt = false
+
+[functions.staff-automations]
+verify_jwt = false
+
+[functions.delete-account]
+verify_jwt = false
+
+[functions.demo-reset]
+verify_jwt = false

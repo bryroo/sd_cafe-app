@@ -1,6 +1,7 @@
 -- Checks the database rules against the SRS, acting as each role in turn (guest, customer, staff,
 -- server). Runs in one transaction and rolls everything back, so it is safe on any database.
--- Run locally:  npx supabase db query --local -f supabase/tests/rules_check.sql
+-- Run on an empty database (it creates its own customers), e.g. right after `npx supabase db reset`:
+--   docker exec -i supabase_db_MEGS-Cafe-App psql -U postgres < supabase/tests/rules_check.sql
 -- Prints one row per check; any failed check raises an exception and stops the run.
 
 begin;
