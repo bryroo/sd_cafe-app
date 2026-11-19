@@ -14,7 +14,7 @@ On approval, the first step writes the full findings to `DB_AUDIT.md` and this p
 4. **Email-to-mobile lookup (anon):** `customer_login_address('x@y.com')` returns `639XXXXXXXXX@phone.megs.local`, which reveals the account's mobile number. `staff_login_address` reveals staff emails (low).
 
 ### Performance (measured on 20k orders)
-5. Policies call `public.is_staff()` without `(select …)`, so it runs **once per row**. Staff queue (latest 300): **277 ms**. Open queue: **268 ms**. RLS-only `order_line` read: **200 ms**. Wrapped (trial, rolled back): **13 / 13 / 9 ms**. Adding `orders(placed_at desc)` brings the staff queue to **7 ms**. The policies already use `(select auth.uid())` correctly.
+5. The 18 policies that call `public.is_staff()` do it without `(select …)`, so it runs **once per row**. Staff queue (latest 300): **277 ms**. Open queue: **268 ms**. RLS-only `order_line` read: **200 ms**. Wrapped (trial, rolled back): **13 / 13 / 9 ms**. Adding `orders(placed_at desc)` brings the staff queue to **7 ms**. The policies already use `(select auth.uid())` correctly.
 6. Advisors (local, `--level info`): 0 ERROR, 0 WARN. 20 × `unindexed_foreign_keys`, 15 × `unused_index` (not meaningful: stats just reset, tables under 200 kB, so keep them all), 1 × `rls_enabled_no_policy` (`login_attempt`, intentional: server only).
 7. Client chattiness: the staff console runs `staff_payments()` over **all** payments on every reload (every 15 s and on every Realtime event). In `setStore`, each sold-out toggle runs its own update **plus a full reload** in a loop: an N+1 ([src/state/shared.ts:999](src/state/shared.ts#L999)).
 
@@ -39,7 +39,7 @@ Unverified mobile at sign-up lets someone squat a number (waits for SMS OTP). Th
 ## Migrations (ordered; one commit each; each commit regenerates `src/lib/database.types.ts`)
 Each is created with `npx supabase migration new <name>`. None of them is destructive. Every function signature, table and column the client uses stays as it is.
 
-**M1 `rls_wrap_is_staff`** (schema/policy). `alter policy` on the 15 policies that call `is_staff()`, changing it to `(select public.is_staff())`. Same rows visible to every role.
+**M1 `rls_wrap_is_staff`** (schema/policy). `alter policy` on the 18 policies that call `is_staff()`, changing it to `(select public.is_staff())`. Same rows visible to every role.
 *Breaks:* nothing (same semantics). *Rollback:* `alter policy` back to the original text (kept in the migration comment).
 
 **M2 `orders_and_fk_indexes`** (schema). `orders (placed_at desc)` is proven by the EXPLAIN above. Candidates, each kept only if EXPLAIN on its real query or cascade shows a benefit:
@@ -82,3 +82,12 @@ FKs on small lookup tables (tier, store, template, staff, category) stay unindex
 7. Re-run `scratchpad/explain.sql` (20k rolled-back load) and report before/after times.
 8. `CLAUDE.md` updated.
 9. List what I couldn't verify (production data quality, production advisors, Auth rate limits on hosted, PWA cache rollover) and your manual steps: take a backup first, run the M4 SELECT on prod, `npx supabase db push`, `npx supabase functions deploy sign-in`, `npx vercel deploy --prod`, then later approve M6b.
+
+## As implemented (2026-11-19)
+Differences from the plan above:
+- **M1** covers **18** policies (the plan said 15; the count came from the live catalogue).
+- **M2** dropped `automated_order (customer_id)`: 6 rows, no measurable benefit. The other six indexes each showed a gain (see the migration comment). Also seen but not in the approved list, so left for later: `points_txn (order_id)` and `orders (customer_reward_id)` are scanned by ON DELETE SET NULL (about 2–3 ms each on 20k rows).
+- **M6** `sign-in` falls back to the service key for its throwaway Auth client when `SUPABASE_ANON_KEY` isn't set (projects on new-style keys).
+- **Tests** live in `supabase/tests/database/` and run with `npm run test:db`. The plain `npx supabase test db` would also pick up `rules_check.sql`, which isn't TAP. 141 assertions.
+
+Commits: `6c49b40` docs · `8755164` M1 · `8d25a76` M2 · `b14d198` M3 · `1d727f9` M4 · `42c44e1` M5 · `4330a41` M6 · `4d51c79` M7 · `68ca64e` availability batching · `48a327c` pgTAP tests.

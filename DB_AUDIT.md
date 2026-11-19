@@ -16,7 +16,7 @@ The changes made in response are in [DB_PLAN.md](DB_PLAN.md).
 | 2 | **Critical** | `demo_set_points` lets any signed-in customer set their own balance to anything, then redeem every reward | M3–M5 | Fix approved (demo accounts only) |
 | 3 | **High** | Anon can lock out any customer or staff member (`login_failed` ×5) and clear any lockout (`login_succeeded`). The lockout is checked only in the client, so calling Auth directly skips it | M6 (+ M6b later) | Fix approved (sign-in function) |
 | 4 | **Medium** | `customer_login_address(email)` (anon) returns `639…@phone.megs.local`, which reveals the mobile number behind an email | M6 (+ M6b) | Fix approved |
-| 5 | Medium (perf) | `is_staff()` in 15 policies isn't wrapped in `(select …)`, so it runs once per row | M1 | Safe to fix |
+| 5 | Medium (perf) | `is_staff()` in 18 policies isn't wrapped in `(select …)`, so it runs once per row | M1 | Safe to fix |
 | 6 | Low (perf) | Staff queue sorts all orders by `placed_at`, with no index | M2 | Safe to fix |
 | 7 | Low (perf) | 20 unindexed foreign keys; a few sit on filtered columns or delete paths | M2 (subset) | Safe to fix |
 | 8 | Low (perf) | Staff console fetches **all** payments (`staff_payments()`) on every reload | M7 | Safe to fix |
@@ -55,11 +55,11 @@ select public.customer_login_address('09171234567') -> 639171234567@phone.megs.l
 | RLS enabled, no policies | 1: `login_attempt` (intentional: server functions only, no grants) |
 | `USING (true)` policies | `store_settings`, `tier`, `option_group`, `option_value` SELECT for anon/authenticated. Public catalog by design (FR-ACC-01); nothing sensitive |
 | Policies calling `auth.uid()` directly | **0**. All use `(select auth.uid())` |
-| Policies calling `is_staff()` per row | **15** (finding 5) |
+| Policies calling `is_staff()` per row | **18** (finding 5) |
 | Indexes on policy columns | `customer_id` is indexed on every customer-owned table. `order_id` is indexed on `order_line`, `order_status_event`, `payment`. `customer.customer_id` and `staff_user.staff_id` are PKs |
 | Views / SECURITY DEFINER views | **0** views |
 | SECURITY DEFINER functions without fixed `search_path` | **0**. All 30+ use `search_path = ''` |
-| Functions callable by anon | 7: `customer_login_address`, `staff_login_address`, `login_failed`, `login_succeeded`, `login_locked_until`, `is_mobile_registered`, `demo_mode_on`, `is_staff` (findings 3, 4, 10). `is_mobile_registered` is by design (SRS 3.2.1.5) |
+| Functions callable by anon | 8: `customer_login_address`, `staff_login_address`, `login_failed`, `login_succeeded`, `login_locked_until`, `is_mobile_registered`, `demo_mode_on`, `is_staff` (findings 3, 4, 10). `is_mobile_registered` is by design (SRS 3.2.1.5) |
 | Functions callable by authenticated only | `check_promo_code`, `current_actor`, `redeem_reward`, `staff_order_payments`, `staff_payments`, `demo_set_order_state`, `demo_set_points` (findings 1, 2) |
 | Storage buckets / bucket policies | **None exist** |
 | service_role in client code | **None**. Only in Edge Functions (`SUPABASE_SERVICE_ROLE_KEY` env) and `scripts/create-staff.mjs` (`SUPABASE_SECRET_KEY` env, run by hand). `.env*` is git-ignored |
