@@ -7,6 +7,7 @@
 import { useEffect, useSyncExternalStore } from 'react'
 import type { RealtimeChannel } from '@supabase/supabase-js'
 import { callFunction, db, isStaffTab, loginAddress } from '../lib/supabase'
+import { clearUserCaches } from './caches'
 import { getCatalog, onCatalog, refreshCatalog, type StoreRow, type TierRow } from '../data/catalog'
 import { products } from '../data/menu'
 import { setUsedPromotions, type MyReward } from '../data/rewards'
@@ -785,6 +786,8 @@ function listen(uid: string | null) {
 export function startShared() {
   void reloadShared()
   db().auth.onAuthStateChange((event) => {
+    // Signing out also drops the service worker's offline copies of this person's data
+    if (event === 'SIGNED_OUT') void clearUserCaches()
     if (event === 'SIGNED_IN' || event === 'SIGNED_OUT' || event === 'USER_UPDATED') void reloadShared()
   })
   // Polling fallback (SRS 3.1.4: every 15 s if the live channel drops)
@@ -804,6 +807,8 @@ export const failNextWrite = () => {
 /** Turns a database or network error into the sentence the person sees */
 function problem(error: { message?: string } | null | undefined, fallback = "Couldn't update. Try again."): Error {
   const msg = error?.message ?? ''
+  // No connection: say so. Nothing is queued; the person retries once they're back online.
+  if (typeof navigator !== 'undefined' && !navigator.onLine) return new Error("You're offline. Connect and try again.")
   // Messages raised by the database rules are written for people; anything technical gets the fallback
   return new Error(msg && !/violates|syntax|permission denied|JWT|fetch|network/i.test(msg) ? msg : fallback)
 }

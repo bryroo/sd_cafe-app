@@ -6,6 +6,7 @@ import { Navigate, Route, Routes, useLocation, useNavigate } from 'react-router-
 import { Icon, type IconName } from '../components/Icon'
 import { Lamp } from '../components/Lamp'
 import { LogoMark } from '../components/ui'
+import { UpdateBanner } from '../components/pwa'
 import { useOnline } from '../state/online'
 import { failNextWrite, openState, setStore, useShared, clock, lastSynced } from '../state/shared'
 import { Modal, NewOrders, StaffButton, StaffCtx, type StaffApi } from './kit'
@@ -279,6 +280,7 @@ export function StaffApp() {
           </main>
         </div>
         {nav('st-nav st-nav--bottom')}
+        <UpdateBanner />
 
         {toast && (
           <div className="st-toast" role="status" key={toast.id}>

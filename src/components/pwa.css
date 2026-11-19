@@ -1,0 +1,82 @@
+/* PWA chrome: update banner, offline indicator, install card (src/components/pwa.tsx) */
+
+.pwa-update {
+  position: fixed;
+  z-index: 60;
+  left: 50%;
+  bottom: calc(env(safe-area-inset-bottom, 0px) + 84px);
+  transform: translateX(-50%);
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: max-content;
+  max-width: calc(100% - 32px);
+  padding: 6px 6px 6px 16px;
+  border-radius: var(--radius-card);
+  background: var(--ink);
+  color: var(--on-dark);
+  box-shadow: var(--elevation-3);
+}
+.pwa-update__text { flex: 1 0 auto; }
+.pwa-update__action {
+  min-height: 44px;
+  padding: 0 16px;
+  border-radius: var(--radius-button);
+  background: var(--gold);
+  color: #141414;
+}
+@media (min-width: 768px) {
+  .pwa-update { bottom: 24px; }
+}
+
+.pwa-offline {
+  position: fixed;
+  z-index: 55;
+  top: calc(env(safe-area-inset-top, 0px) + 6px);
+  left: 50%;
+  transform: translateX(-50%);
+  pointer-events: none;
+}
+.pwa-offline__pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 10px;
+  border-radius: 999px;
+  background: var(--ink);
+  color: var(--on-dark);
+  box-shadow: var(--elevation-3);
+  white-space: nowrap;
+}
+
+.pwa-install {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-card);
+  background: var(--surface);
+}
+.pwa-install__icon { border-radius: 10px; flex-shrink: 0; }
+.pwa-install__text { flex: 1 0 0; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+.pwa-install__actions { display: flex; align-items: center; gap: 4px; flex-shrink: 0; }
+.pwa-install__go {
+  min-height: 44px;
+  padding: 0 16px;
+  border-radius: var(--radius-button);
+  background: var(--ink);
+  color: var(--on-dark);
+}
+.pwa-install__close {
+  display: grid;
+  place-items: center;
+  width: 44px;
+  height: 44px;
+  border-radius: var(--radius-button);
+  color: var(--muted);
+}
+@media (hover: hover) {
+  .pwa-install__go:hover { background: var(--steel); }
+  .pwa-install__close:hover { background: var(--raised); }
+}

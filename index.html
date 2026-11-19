@@ -4,7 +4,10 @@
     <meta charset="UTF-8" />
     <!-- viewport-fit=cover lets the app run under the notch and gesture bar; the CSS keeps content clear of them -->
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
-    <meta name="theme-color" content="#141414" />
+    <!-- The browser and OS bars follow the app's light or dark theme -->
+    <meta name="theme-color" media="(prefers-color-scheme: light)" content="#ebebe8" />
+    <meta name="theme-color" media="(prefers-color-scheme: dark)" content="#121212" />
+    <meta name="color-scheme" content="light dark" />
     <meta name="description" content="Order ahead for pickup at the counter, or have it delivered." />
 
     <!-- Installed to the home screen: opens full screen with its own name and icon.
@@ -13,7 +16,9 @@
     <link rel="apple-touch-icon" href="./icons/apple-touch-icon.png" />
     <meta name="apple-mobile-web-app-capable" content="yes" />
     <meta name="mobile-web-app-capable" content="yes" />
-    <meta name="apple-mobile-web-app-status-bar-style" content="default" />
+    <!-- The app draws under the iPhone status bar (its own light or dark top shows through);
+         the CSS pads content by env(safe-area-inset-top) -->
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
     <meta name="apple-mobile-web-app-title" content="MEGS'" />
 
     <link rel="preconnect" href="https://fonts.googleapis.com" />

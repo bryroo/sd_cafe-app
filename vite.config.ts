@@ -4,6 +4,60 @@ import { VitePWA } from 'vite-plugin-pwa'
 
 const INK = '#141414'
 
+/* ---------- Service worker: Supabase reads (network-first, per user) ----------
+   Only GET /rest/v1/<table> reads are handled. Everything else (Auth and token refresh, Edge Functions,
+   RPCs, Storage, Realtime websockets, and every POST/PATCH/DELETE/HEAD) matches no route and goes
+   straight to the network. Workbox serialises these functions into the worker, so each one must be
+   self-contained (no outside variables). */
+
+// These run inside the service worker (DOM types come from tsconfig.node.json)
+type SwMatch = { url: URL; request: Request }
+
+/** A table read (GET /rest/v1/<table>, not an RPC) made by a signed-in user */
+const userRead = ({ url, request }: SwMatch) => {
+  if (request.method !== 'GET' || !url.pathname.startsWith('/rest/v1/') || url.pathname.startsWith('/rest/v1/rpc/')) return false
+  try {
+    const token = (request.headers.get('Authorization') ?? '').replace(/^Bearer\s+/i, '')
+    const part = token.split('.')[1]
+    const claims = part ? JSON.parse(atob(part.replace(/-/g, '+').replace(/_/g, '/'))) : {}
+    return typeof claims.sub === 'string' && claims.role === 'authenticated'
+  } catch {
+    return false
+  }
+}
+
+/** The same reads made by a guest (catalog: menu, store hours, offers) */
+const guestRead = ({ url, request }: SwMatch) => {
+  if (request.method !== 'GET' || !url.pathname.startsWith('/rest/v1/') || url.pathname.startsWith('/rest/v1/rpc/')) return false
+  try {
+    const token = (request.headers.get('Authorization') ?? '').replace(/^Bearer\s+/i, '')
+    const part = token.split('.')[1]
+    const claims = part ? JSON.parse(atob(part.replace(/-/g, '+').replace(/_/g, '/'))) : {}
+    return !(typeof claims.sub === 'string' && claims.role === 'authenticated')
+  } catch {
+    return true
+  }
+}
+
+/** Cache key: the URL plus who asked and the response shape, with no headers (so no token) stored */
+const apiCacheKey = {
+  cacheKeyWillBeUsed: async ({ request }: { request: Request }) => {
+    let sub = ''
+    try {
+      const token = (request.headers.get('Authorization') ?? '').replace(/^Bearer\s+/i, '')
+      const part = token.split('.')[1]
+      const claims = part ? JSON.parse(atob(part.replace(/-/g, '+').replace(/_/g, '/'))) : {}
+      if (typeof claims.sub === 'string' && claims.role === 'authenticated') sub = claims.sub
+    } catch {
+      /* guest */
+    }
+    const url = new URL(request.url)
+    url.searchParams.set('__megs_user', sub || 'guest')
+    url.searchParams.set('__megs_accept', request.headers.get('Accept') ?? '')
+    return url.href
+  },
+}
+
 // https://vite.dev/config/
 export default defineConfig({
   plugins: [
@@ -24,7 +78,8 @@ export default defineConfig({
         start_url: './',
         scope: './',
         display: 'standalone',
-        orientation: 'portrait',
+        display_override: ['standalone'],
+        // No orientation lock: tablets and desktops use the wide layout
         background_color: INK,
         theme_color: INK,
         categories: ['food', 'shopping'],
@@ -52,9 +107,32 @@ export default defineConfig({
         globIgnores: ['screenshots/**'],
         navigateFallback: 'index.html',
         cleanupOutdatedCaches: true,
-        // Only the app's own files and the font are cached. API calls (Supabase) always go to the network,
-        // so orders, points and availability are never stale.
+        // The app's files are precached. Supabase table reads are network-first (fresh whenever online;
+        // the last copy after 3 s or offline), cached per user and cleared on sign-out
+        // (src/state/caches.ts). Nothing else from Supabase is ever cached: see apiCacheKey above.
         runtimeCaching: [
+          {
+            urlPattern: userRead,
+            handler: 'NetworkFirst',
+            options: {
+              cacheName: 'megs-api-user',
+              networkTimeoutSeconds: 3,
+              plugins: [apiCacheKey],
+              cacheableResponse: { statuses: [200] },
+              expiration: { maxEntries: 200, maxAgeSeconds: 60 * 60 * 24 * 7 },
+            },
+          },
+          {
+            urlPattern: guestRead,
+            handler: 'NetworkFirst',
+            options: {
+              cacheName: 'megs-api-public',
+              networkTimeoutSeconds: 3,
+              plugins: [apiCacheKey],
+              cacheableResponse: { statuses: [200] },
+              expiration: { maxEntries: 100, maxAgeSeconds: 60 * 60 * 24 * 7 },
+            },
+          },
           {
             urlPattern: /^https:\/\/fonts\.googleapis\.com\//,
             handler: 'StaleWhileRevalidate',

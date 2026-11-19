@@ -26,6 +26,7 @@ import { Badge, ProductThumb } from '../components/blocks'
 import { Icon } from '../components/Icon'
 import { Button, Checkbox, Photo } from '../components/ui'
 import { ClosedBanner, FulfillmentSummary, OfflineBanner } from '../components/order'
+import { InstallCard } from '../components/pwa'
 import interiorPhoto from '../assets/photos/interior-banquette.webp'
 import lattesPhoto from '../assets/photos/iced-lattes-banquette.webp'
 import cupsPhoto from '../assets/photos/ube-choco-matcha-cups.webp'
@@ -168,6 +169,11 @@ export function Home() {
         {!shop.open && (
           <Row>
             <ClosedBanner {...shop} />
+          </Row>
+        )}
+        {!loading && (
+          <Row>
+            <InstallCard />
           </Row>
         )}
 

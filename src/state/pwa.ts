@@ -40,6 +40,17 @@ export function startPwa() {
     updateSW = registerSW({
       // A new build is waiting: ask before switching, so nobody is reloaded in the middle of checkout
       onNeedRefresh: () => set({ needRefresh: true }),
+      // Look for a new version every hour and whenever the app comes back into view
+      onRegisteredSW: (_url, registration) => {
+        if (!registration) return
+        const check = () => {
+          if (navigator.onLine) void registration.update().catch(() => {})
+        }
+        setInterval(check, 60 * 60 * 1000)
+        document.addEventListener('visibilitychange', () => {
+          if (document.visibilityState === 'visible') check()
+        })
+      },
       onRegisterError: () => {
         /* not served over https (or blocked): the app still runs, just not offline */
       },
