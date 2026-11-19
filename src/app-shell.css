@@ -9,8 +9,8 @@
   flex-shrink: 0;
   overflow-y: auto;
   padding: 20px 16px 40px;
-  background: #e4e4e0;
-  border-right: 1px solid #cfcfca;
+  background: var(--desk-panel);
+  border-right: 1px solid var(--desk-edge);
   font-size: 13px;
 }
 .shell__brand {
@@ -38,10 +38,10 @@
   color: var(--color-text);
   text-decoration: none;
 }
-.shell__index a:hover { background: #d9d9d4; }
+.shell__index a:hover { background: var(--desk-hover); }
 .shell__index a.active {
   background: var(--ink);
-  color: var(--on-dark);
+  color: var(--on-ink);
 }
 .shell__code {
   font-variant-numeric: tabular-nums;

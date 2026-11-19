@@ -13,7 +13,7 @@
   max-width: calc(100% - 32px);
   padding: 6px 6px 6px 16px;
   border-radius: var(--radius-card);
-  background: var(--ink);
+  background: var(--plate);
   color: var(--on-dark);
   box-shadow: var(--elevation-3);
 }
@@ -43,7 +43,7 @@
   gap: 6px;
   padding: 4px 10px;
   border-radius: 999px;
-  background: var(--ink);
+  background: var(--plate);
   color: var(--on-dark);
   box-shadow: var(--elevation-3);
   white-space: nowrap;
@@ -66,7 +66,7 @@
   padding: 0 16px;
   border-radius: var(--radius-button);
   background: var(--ink);
-  color: var(--on-dark);
+  color: var(--on-ink);
 }
 .pwa-install__close {
   display: grid;

@@ -17,7 +17,7 @@
 .btn--split > .t-button { flex: 1; display: flex; justify-content: space-between; }
 .btn--primary {
   background: var(--ink);
-  color: var(--on-dark);
+  color: var(--on-ink);
 }
 .btn--primary:hover:not(:disabled) { background: var(--steel); }
 .btn--secondary {
@@ -214,7 +214,7 @@
   flex-shrink: 0;
   display: block;
 }
-.photo--real { background: var(--ink); }
+.photo--real { background: var(--plate); }
 
 @media (prefers-reduced-motion: reduce) {
   .loader { animation-duration: 2.4s; }

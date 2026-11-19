@@ -21,9 +21,29 @@
   --steel: #262626;             /* hover on ink */
   --muted: #545452;             /* secondary text, 6.9:1 on ground */
   --faint: #686865;             /* meta and placeholders, 4.9:1 on white */
-  --on-dark: #ffffff;
-  --on-dark-muted: #b4b4b0;     /* 9:1 on ink */
-  --dark-rule: #333331;
+  /* Black-board plates (live order, posters, points, tracking board, cart bar, toasts, staff rail).
+     They stay dark in dark mode, with white and gold on them. */
+  --plate: #141414;
+  --plate-steel: #262626;       /* hover on a plate */
+  --on-plate: #ffffff;
+  --on-plate-muted: #b4b4b0;    /* 9:1 on the plate */
+  --plate-rule: #333331;
+  /* Text on an ink-filled mark or control (primary button, selected chip, toggle). Ink flips to light
+     in dark mode, so this flips to dark. */
+  --on-ink: #ffffff;
+  --on-ink-muted: #b4b4b0;
+  /* Older names: text on plates */
+  --on-dark: var(--on-plate);
+  --on-dark-muted: var(--on-plate-muted);
+  --dark-rule: var(--plate-rule);
+
+  /* Behind the app in the desktop demo frame */
+  --desk: #d6d6d2;
+  --desk-panel: #e4e4e0;
+  --desk-hover: #d9d9d4;
+  --desk-edge: #cfcfca;
+
+  color-scheme: light;
 
   --negative: #b3322a;
   --pill-negative-bg: #fbe9e7;
@@ -75,6 +95,50 @@
   --font: 'Archivo', system-ui, -apple-system, 'Segoe UI', sans-serif;
 }
 
+/* Dark: the cafe after hours. The room goes dark, text and controls turn light, the black-board plates
+   stay boards (lifted a step so they still read as panels) and gold is still the only accent. */
+@media (prefers-color-scheme: dark) {
+  :root {
+    --gold-ink: #dcc27a;          /* gold as text on dark, 9:1 on surface */
+    --gold-pale: #3b3320;
+
+    --ground: #121212;
+    --surface: #1c1c1b;
+    --raised: #252524;
+    --active: #30302e;
+    --border: #343432;
+    --rule: #2a2a28;
+    --control: #6e6e6a;
+    --ink: #f2f2ef;               /* text, borders and ink-filled controls */
+    --steel: #d5d5d0;             /* hover on an ink-filled control */
+    --muted: #b0b0ab;             /* 8.9:1 on ground */
+    --faint: #96968f;             /* 5.9:1 on surface */
+    --on-ink: #141414;
+    --on-ink-muted: #4a4a47;
+
+    --plate: #262624;
+    --plate-steel: #30302e;
+    --on-plate: #ffffff;
+    --on-plate-muted: #b4b4b0;
+    --plate-rule: #3a3a38;
+
+    --negative: #ff7a6e;
+    --pill-negative-bg: #3d1b18;
+    --pill-negative-ink: #ffb4ab;
+    --positive: #6fcf97;
+
+    --elevation-2: 0 -6px 24px rgba(0, 0, 0, 0.5);
+    --elevation-3: 0 12px 32px rgba(0, 0, 0, 0.55);
+
+    --desk: #0b0b0b;
+    --desk-panel: #1a1a19;
+    --desk-hover: #252524;
+    --desk-edge: #2a2a28;
+
+    color-scheme: dark;
+  }
+}
+
 *,
 *::before,
 *::after {
@@ -92,7 +156,7 @@ body {
   font-family: var(--font);
   font-variation-settings: 'wdth' 100;
   color: var(--ink);
-  background: #d6d6d2;
+  background: var(--desk);
   -webkit-font-smoothing: antialiased;
 }
 

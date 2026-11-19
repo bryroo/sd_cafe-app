@@ -183,7 +183,7 @@
   gap: var(--space-12);
 }
 .pdp__add { flex: 1 0 0; min-width: 0; width: auto; }
-.pdp__add:disabled { background: var(--ink); color: var(--on-dark); cursor: progress; }
+.pdp__add:disabled { background: var(--ink); color: var(--on-ink); cursor: progress; }
 
 .sr-only {
   position: absolute;

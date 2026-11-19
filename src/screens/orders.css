@@ -5,7 +5,7 @@
   flex-direction: column;
   gap: 16px;
   padding: 16px 16px 24px;
-  background: var(--ink);
+  background: var(--plate);
   color: var(--on-dark);
   border-radius: var(--radius-card);
 }

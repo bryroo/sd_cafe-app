@@ -8,7 +8,7 @@
   height: 64px;
   border-radius: 32px;
   background: var(--color-secondary);
-  color: var(--color-on-dark);
+  color: var(--on-ink);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -60,7 +60,7 @@
   align-items: center;
   gap: var(--space-12);
   padding: var(--space-12) var(--space-16);
-  background: var(--ink);
+  background: var(--plate);
   color: var(--on-dark);
   border-left: 3px solid var(--gold);
   border-radius: var(--radius-input);

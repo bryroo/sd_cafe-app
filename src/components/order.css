@@ -28,11 +28,11 @@
   height: 44px;
   flex-shrink: 0;
   border-radius: var(--radius-button);
-  background: var(--ink);
+  background: var(--plate);
   color: #e9e9e6;
   display: grid;
   place-items: center;
-  --lamp-bg: var(--ink);
+  --lamp-bg: var(--plate);
 }
 .fulfillment-summary:not(:disabled):hover { border-color: var(--control); }
 .fulfillment-summary:disabled { cursor: default; color: inherit; }
@@ -97,7 +97,7 @@
   gap: 12px;
   padding: 16px 16px;
   border-radius: var(--radius-input);
-  background: var(--ink);
+  background: var(--plate);
   color: var(--on-dark-muted);
 }
 .fulfillment-details__number-value {
@@ -134,7 +134,7 @@
 .fulfillment-seg.is-selected {
   background: var(--ink);
   border-color: var(--ink);
-  color: var(--on-dark);
+  color: var(--on-ink);
 }
 .fulfillment-seg__head {
   display: flex;
@@ -144,7 +144,7 @@
 }
 .fulfillment-seg__head .t-h3 { flex: 1 0 0; }
 .fulfillment-seg__eta { color: var(--muted); }
-.fulfillment-seg.is-selected .fulfillment-seg__eta { color: var(--on-dark-muted); }
+.fulfillment-seg.is-selected .fulfillment-seg__eta { color: var(--on-ink-muted); }
 
 /* Address card */
 .address-card {
@@ -301,7 +301,7 @@ button.option-row:hover .option-row__label { text-decoration: underline; text-un
 .status-badge--muted { background: var(--active); color: var(--ink); }
 .status-badge--accent { background: var(--gold); color: var(--ink); }
 .status-badge--success { background: var(--gold); color: var(--ink); }
-.status-badge--dark { background: var(--ink); color: var(--on-dark); }
+.status-badge--dark { background: var(--ink); color: var(--on-ink); }
 .status-badge--error { background: var(--pill-negative-bg); color: var(--pill-negative-ink); }
 
 /* The conduit tracker */
@@ -324,7 +324,7 @@ button.option-row:hover .option-row__label { text-decoration: underline; text-un
   --lamp-done: #8d8d89;
   --lamp-off: #5a5a57;
   --lamp-lit: #e9e9e6;
-  --lamp-bg: var(--ink);
+  --lamp-bg: var(--plate);
 }
 .conduit__step {
   position: relative;

@@ -4,8 +4,8 @@
   flex-direction: column;
   gap: 8px;
   padding: 16px 16px 20px;
-  background: var(--ink);
-  border-color: var(--ink);
+  background: var(--plate);
+  border-color: var(--plate);
   color: var(--on-dark);
 }
 .points-card .t-caption { color: var(--on-dark-muted) !important; }
@@ -139,7 +139,7 @@
   align-items: flex-start;
   gap: 8px;
   padding: 24px 16px 24px;
-  background: var(--ink);
+  background: var(--plate);
   color: var(--on-dark);
   border-radius: var(--radius-card);
 }

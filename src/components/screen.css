@@ -8,7 +8,7 @@
 }
 .screen--bg-background { background: var(--ground); }
 .screen--bg-surface { background: var(--surface); }
-.screen--bg-secondary { background: var(--ink); color: var(--on-dark); }
+.screen--bg-secondary { background: var(--plate); color: var(--on-dark); }
 
 .screen__status-overlay {
   position: absolute;
