@@ -108,3 +108,69 @@
   font-size: 12px;
   line-height: 16px;
 }
+
+/* ---------- The app itself (everyone except the ?frame=1 demo) ----------
+   Phones: full screen, each screen's BottomNav, safe-area padding. Tablets: icon rail. Desktops:
+   sidebar. Fixed overlays stay inside the screen column (transform makes it their containing block). */
+.app {
+  display: flex;
+  height: 100dvh;
+  overflow: hidden;
+  background: var(--ground);
+  overscroll-behavior: none;
+}
+.app__main {
+  flex: 1 0 0;
+  min-width: 0;
+  display: flex;
+  outline: none;
+}
+.app__screen {
+  --status-h: max(env(safe-area-inset-top), 12px);
+  --home-h: env(safe-area-inset-bottom, 0px);
+  position: relative;
+  flex: 1 0 0;
+  min-width: 0;
+  height: 100%;
+  overflow: hidden;
+  overflow-x: clip;
+  background: var(--ground);
+  transform: translateZ(0);
+  padding-left: env(safe-area-inset-left);
+  padding-right: env(safe-area-inset-right);
+}
+/* The drawn iPhone bars belong to the demo frame; here they are just the safe areas */
+.app__screen .status-bar > * { display: none; }
+.app__screen .home-indicator { padding: 0; background: var(--surface); }
+.app__screen .home-indicator span { display: none; }
+html:has(.app),
+html:has(.app) body { overscroll-behavior: none; background: var(--ground); }
+
+@media (min-width: 768px) {
+  .app__screen { --status-h: max(env(safe-area-inset-top), 8px); }
+  .app__screen .bottom-nav { display: none; }
+  /* Readable width: screens designed for a phone get a centred column; bands keep their full width */
+  .app__screen { --column: 720px; }
+  .app__screen .content { max-width: var(--column); margin-inline: auto; }
+  /* Bands line up with the cards: the column's edge plus the rows' own 16px */
+  .app__screen .top-bar,
+  .app__screen .tabs,
+  .app__screen .sticky-footer {
+    padding-inline: max(var(--space-16), calc((100% - var(--column)) / 2 + var(--space-16)));
+  }
+  .app__screen .top-bar--back { padding-left: max(4px, calc((100% - var(--column)) / 2 + 4px)); }
+}
+
+.skip-link {
+  position: fixed;
+  z-index: 100;
+  top: 8px;
+  left: 8px;
+  padding: 10px 16px;
+  border-radius: var(--radius-button);
+  background: var(--plate);
+  color: var(--on-plate);
+  font-weight: 600;
+  transform: translateY(-200%);
+}
+.skip-link:focus { transform: none; }

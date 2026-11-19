@@ -7,6 +7,7 @@ import { OverlayHost, useOverlay } from './overlays/OverlayHost'
 import { StaffApp } from './staff/StaffApp'
 import { useAutoAdvance, useShared } from './state/shared'
 import { OfflineIndicator, UpdateBanner } from './components/pwa'
+import { AppNav } from './components/AppNav'
 import './app-shell.css'
 
 /** Shrinks the 852px-tall phone frame to fit short desktop windows. */
@@ -108,29 +109,68 @@ function CustomerNotifier() {
   return null
 }
 
-/** The customer app: a 393×852 phone frame plus a screen index for jumping between Figma frames. */
-function CustomerApp() {
+/** Demo view: `?frame=1` (before the #) shows the 393×852 phone frame and the screen index for jumping
+ *  between Figma frames. Everyone else gets the app itself, laid out for their screen. */
+const frameDemo = new URLSearchParams(window.location.search).get('frame') === '1'
+
+function Screens() {
+  return (
+    <>
+      <Routes>
+        {routes.map((r) => (
+          <Route key={r.path} path={r.path} element={r.element} />
+        ))}
+        <Route path="*" element={<ComingSoon title="Coming soon" />} />
+      </Routes>
+      {/* Inside the screen area so they sit on the phone in the demo frame too */}
+      <OfflineIndicator />
+      <UpdateBanner />
+    </>
+  )
+}
+
+function PhoneFrame() {
   const scale = usePhoneScale()
+  return (
+    <div className="shell">
+      <ScreenIndex />
+      <main className="shell__stage">
+        {/* Overlays (sheets, dialogs, toasts) render into #phone */}
+        <div id="phone" className="phone" style={{ ['--phone-scale' as string]: scale }}>
+          <Screens />
+        </div>
+      </main>
+    </div>
+  )
+}
+
+/** The customer app: bottom tabs on phones, a rail on tablets, a sidebar on desktops */
+function AppLayout() {
+  return (
+    <div className="app">
+      <a className="skip-link" href="#main" onClick={(e) => {
+        e.preventDefault()
+        document.getElementById('main')?.focus()
+      }}>
+        Skip to content
+      </a>
+      <AppNav />
+      {/* Overlays (sheets, dialogs, toasts) render into #phone and stay inside this column */}
+      <main id="main" className="app__main" tabIndex={-1}>
+        <div id="phone" className="app__screen">
+          <Screens />
+        </div>
+      </main>
+    </div>
+  )
+}
+
+function CustomerApp() {
   return (
     <AppStateProvider>
       <OverlayHost>
         <CustomerNotifier />
-        <div className="shell">
-          <ScreenIndex />
-          <main className="shell__stage">
-            <div id="phone" className="phone" style={{ ['--phone-scale' as string]: scale }}>
-              <Routes>
-                {routes.map((r) => (
-                  <Route key={r.path} path={r.path} element={r.element} />
-                ))}
-                <Route path="*" element={<ComingSoon title="Coming soon" />} />
-              </Routes>
-              {/* Inside the phone so they sit on its screen in the desktop frame too */}
-              <OfflineIndicator />
-              <UpdateBanner />
-            </div>
-          </main>
-        </div>
+        {frameDemo ? <PhoneFrame /> : <AppLayout />}
       </OverlayHost>
     </AppStateProvider>
   )

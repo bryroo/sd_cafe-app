@@ -28,7 +28,7 @@
   display: flex;
   flex-direction: column;
   gap: var(--space-12);
-  padding: var(--space-8) var(--space-16) calc(var(--space-24) + 34px);
+  padding: var(--space-8) var(--space-16) calc(var(--space-24) + var(--home-h, 34px));
   background: var(--color-surface);
   border-radius: var(--radius-sheet) var(--radius-sheet) 0 0;
   box-shadow: var(--elevation-2);
@@ -228,4 +228,28 @@
 }
 @media (prefers-reduced-motion: reduce) {
   .app-toast { animation: none; }
+}
+
+/* Tablets and desktops: a bottom sheet reads as a centred dialog */
+@media (min-width: 768px) {
+  .app__screen .sheet {
+    left: 50%;
+    right: auto;
+    top: 50%;
+    bottom: auto;
+    width: min(480px, calc(100% - 48px));
+    max-height: min(85%, 760px);
+    padding-bottom: var(--space-24);
+    border-radius: var(--radius-modal);
+    box-shadow: var(--elevation-3);
+    transform: translate(-50%, -50%);
+    animation: sheet-pop 0.18s ease-out;
+  }
+  .app__screen .sheet__handle { display: none; }
+}
+@keyframes sheet-pop {
+  from { opacity: 0; transform: translate(-50%, -48%); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .app__screen .sheet { animation: none; }
 }

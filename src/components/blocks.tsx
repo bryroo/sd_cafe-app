@@ -3,19 +3,13 @@ import type { CSSProperties, ReactNode } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { peso, type Product } from '../data/menu'
 import { Icon, type IconName } from './Icon'
+import { tabs, type Tab } from './tabs'
 import { Lamp } from './Lamp'
 import './blocks.css'
 
 /* ---------- Navigation ---------- */
 
-export type Tab = 'home' | 'menu' | 'orders' | 'rewards' | 'profile'
-const tabs: { id: Tab; label: string; path: string; icon: IconName }[] = [
-  { id: 'home', label: 'Home', path: '/home', icon: 'home' },
-  { id: 'menu', label: 'Menu', path: '/menu', icon: 'cup' },
-  { id: 'orders', label: 'Orders', path: '/orders', icon: 'receipt' },
-  { id: 'rewards', label: 'Rewards', path: '/rewards', icon: 'star' },
-  { id: 'profile', label: 'Profile', path: '/profile', icon: 'user' },
-]
+export type { Tab } from './tabs'
 
 /** Navigation / BottomNav — the active tab is marked in ink by a steel bar along its top edge. */
 export function BottomNav({ active }: { active: Tab }) {
