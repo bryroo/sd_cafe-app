@@ -1019,21 +1019,21 @@ export async function setTemplate(t: Template) {
 
 export type LoginResult = { ok: true } | { ok: false; lockedUntil: number; left: number; notStaff?: boolean; offline?: boolean }
 
+type SignInReply =
+  | { ok: true; session: { access_token: string; refresh_token: string } }
+  | { ok: false; lockedUntil: string | null; left: number; notStaff?: boolean }
+
+/** The sign-in Edge Function checks the lockout, verifies the password and records the result on the
+ *  server; this tab only receives the session. Not retried or cached: each call counts as an attempt. */
 async function signIn(id: string, password: string, audience: 'customer' | 'staff'): Promise<LoginResult> {
-  const c = db()
-  const key = id.trim()
-  const { data: locked, error: lockErr } = await c.rpc('login_locked_until', { p_identifier: key, p_audience: audience })
-  if (lockErr) return { ok: false, lockedUntil: 0, left: LOCK_AFTER, offline: true }
-  if (locked) return { ok: false, lockedUntil: Date.parse(locked as string), left: 0 }
-  const { data: email } = await c.rpc(audience === 'staff' ? 'staff_login_address' : 'customer_login_address', { p_identifier: key })
-  const res = email ? await c.auth.signInWithPassword({ email: email as string, password }) : null
-  if (res && !res.error) {
-    await c.rpc('login_succeeded', { p_identifier: key, p_audience: audience })
-    return { ok: true }
+  const { data, error } = await callFunction<SignInReply>('sign-in', { identifier: id.trim(), password, audience })
+  if (error) return { ok: false, lockedUntil: 0, left: LOCK_AFTER, offline: true }
+  if (!data.ok) {
+    return { ok: false, lockedUntil: data.lockedUntil ? Date.parse(data.lockedUntil) : 0, left: data.left, notStaff: data.notStaff }
   }
-  const { data: f } = await c.rpc('login_failed', { p_identifier: key, p_audience: audience })
-  const r = (f ?? {}) as { left?: number; locked_until?: string | null }
-  return { ok: false, lockedUntil: r.locked_until ? Date.parse(r.locked_until) : 0, left: r.left ?? 0 }
+  const { error: sessionError } = await db().auth.setSession(data.session)
+  if (sessionError) return { ok: false, lockedUntil: 0, left: LOCK_AFTER, offline: true }
+  return { ok: true }
 }
 
 export async function customerLogin(account: string, password: string): Promise<LoginResult> {

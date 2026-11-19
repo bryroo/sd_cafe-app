@@ -435,3 +435,7 @@ verify_jwt = false
 
 [functions.demo-reset]
 verify_jwt = false
+
+# Called before the person is signed in
+[functions.sign-in]
+verify_jwt = false
