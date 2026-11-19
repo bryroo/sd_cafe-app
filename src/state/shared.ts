@@ -644,14 +644,16 @@ async function loadStaff(uid: string) {
     set({ ready: true, staff: { ...state.staff, signedIn: false, notStaff: true } })
     return
   }
-  const [orders, payments, templates, automations] = await Promise.all([
+  const [orders, templates, automations] = await Promise.all([
     c.from('orders').select(ORDER_COLUMNS + ', internal_note(author_name, body, created_at)').order('placed_at', { ascending: false }).limit(300),
-    c.rpc('staff_payments'),
     c.from('response_template').select('*').eq('audience', 'customer').order('template_id'),
     c.from('automated_order').select('*, orders:linked_order_id(order_no)').order('created_at', { ascending: false }).limit(100),
   ])
-  const failed = [orders, payments, templates, automations].find((r) => r.error)
-  if (failed) throw failed.error
+  const failedFirst = [orders, templates, automations].find((r) => r.error)
+  if (failedFirst) throw failedFirst.error
+  // Payment references (staff only, IR-03) for the orders on screen, not every payment ever taken
+  const payments = await c.rpc('staff_payments_for', { p_order_ids: ((orders.data ?? []) as unknown as { order_id: string }[]).map((o) => o.order_id) })
+  if (payments.error) throw payments.error
   const refs = new Map<string, string>(((payments.data ?? []) as { payment_id: string; provider_ref: string | null }[]).map((p: { payment_id: string; provider_ref: string | null }) => [p.payment_id, p.provider_ref ?? ''] as [string, string]))
   set({
     ready: true,

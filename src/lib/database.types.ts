@@ -798,6 +798,29 @@ isOneToOne: false
         isOneToOne: false
         isSetofReturn: true
       } },
+"staff_payments_for":
+{ Args: { "p_order_ids": (string)[] }; Returns: {
+              "amount": number,
+"authorized_at": string | null,
+"captured_at": string | null,
+"created_at": string,
+"failure_reason": string | null,
+"method": Database["public"]['Enums']["payment_method_type"],
+"method_label": string,
+"order_id": string,
+"payment_id": string,
+"payment_method_id": string | null,
+"provider_ref": string | null,
+"refunded_at": string | null,
+"status": Database["public"]['Enums']["payment_status"],
+"updated_at": string
+            }[]
+                          SetofOptions: {
+        from: "*"
+        to: "payment"
+        isOneToOne: false
+        isSetofReturn: true
+      } },
 "status_label":
 { Args: { "p_order": Omit<Database["public"]['Tables']["orders"]['Row'], Database["public"]['Tables']["orders"]['ComputedFields']> }; Returns: string
                            },
