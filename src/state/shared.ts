@@ -809,7 +809,7 @@ function problem(error: { message?: string } | null | undefined, fallback = "Cou
 }
 
 /** Runs one write; throws a person-readable error; reloads so every screen shows the result */
-async function write(run: () => PromiseLike<{ error: { message?: string } | null; data?: unknown }>, expectRows = false) {
+async function write(run: () => PromiseLike<{ error: { message?: string } | null; data?: unknown }>, expectRows = false, reload = true) {
   if (failNext) {
     failNext = false
     throw new Error('Simulated write failure')
@@ -817,7 +817,7 @@ async function write(run: () => PromiseLike<{ error: { message?: string } | null
   const { error, data } = await run()
   if (error) throw problem(error)
   if (expectRows && Array.isArray(data) && data.length === 0) throw problem(null)
-  await reloadShared()
+  if (reload) await reloadShared()
   return data
 }
 
@@ -996,16 +996,26 @@ export async function setStore(change: Partial<StoreSettings> | ((s: StoreSettin
     await write(() => db().from('store_settings').update(row).eq('settings_id', state.store.settingsId).select('settings_id'), true)
   }
   // FR-OPS-04: sold-out toggles are menu rows
+  // Each changed item is its own row update (each is audited); the reload happens once, after all of them
   if (next.availability) {
-    for (const p of products) {
-      const want = next.availability[p.id] ?? { available: true }
-      if (want.available !== p.available || (!want.available && (want.reason ?? '') !== (p.unavailableReason ?? ''))) {
-        await write(
+    const availability = next.availability
+    const changed = products.filter((p) => {
+      const want = availability[p.id] ?? { available: true }
+      return want.available !== p.available || (!want.available && (want.reason ?? '') !== (p.unavailableReason ?? ''))
+    })
+    const results = await Promise.allSettled(
+      changed.map((p) => {
+        const want = availability[p.id] ?? { available: true }
+        return write(
           () => db().from('menu_item').update({ is_available: want.available, unavailable_reason: want.available ? null : want.reason || null }).eq('item_id', p.id).select('item_id'),
           true,
+          false,
         )
-      }
-    }
+      }),
+    )
+    if (changed.length) await reloadShared()
+    const failed = results.find((r): r is PromiseRejectedResult => r.status === 'rejected')
+    if (failed) throw failed.reason
   }
   await refreshCatalog()
 }
