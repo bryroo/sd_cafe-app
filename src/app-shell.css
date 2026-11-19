@@ -218,3 +218,6 @@ html:has(.app) body { overscroll-behavior: none; background: var(--ground); }
   /* Home's category photos: landscape, so the tiles don't fill the screen */
   .app__screen .screen--wide .category-cell__photo { aspect-ratio: 16 / 9; }
 }
+
+/* While the staff console's code loads (first visit only) */
+.staff-loading { min-height: 100dvh; background: var(--ground); }

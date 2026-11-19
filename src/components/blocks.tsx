@@ -266,7 +266,7 @@ export function CategoryTile({
 }) {
   return (
     <button className={`category-cell ${photo ? 'category-cell--photo' : ''}`} onClick={onClick}>
-      {photo && <img className="category-cell__photo" src={photo} alt="" style={{ objectPosition: position }} />}
+      {photo && <img className="category-cell__photo" src={photo} alt="" decoding="async" style={{ objectPosition: position }} />}
       <span className="t-h3">{label}</span>
       {count != null && <span className="t-body-sm muted num">{count} items</span>}
     </button>

@@ -23,14 +23,32 @@
 
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <!-- The font loads without holding up the first paint (system font until it arrives) -->
+    <link
+      rel="preload"
+      as="style"
+      href="https://fonts.googleapis.com/css2?family=Archivo:wdth,wght@62..125,400..800&display=swap"
+    />
     <link
       href="https://fonts.googleapis.com/css2?family=Archivo:wdth,wght@62..125,400..800&display=swap"
       rel="stylesheet"
+      media="print"
+      onload="this.media='all'"
     />
+    <noscript>
+      <link href="https://fonts.googleapis.com/css2?family=Archivo:wdth,wght@62..125,400..800&display=swap" rel="stylesheet" />
+    </noscript>
     <title>MEGS' Cafe</title>
+    <!-- App shell painted before the JavaScript arrives; React replaces it -->
+    <style>
+      .boot { min-height: 100dvh; display: flex; align-items: center; justify-content: center; gap: 12px;
+        background: #ebebe8; color: #141414; font: 700 20px/1 system-ui, -apple-system, 'Segoe UI', sans-serif; }
+      .boot img { border-radius: 50%; }
+      @media (prefers-color-scheme: dark) { .boot { background: #121212; color: #f2f2ef; } }
+    </style>
   </head>
   <body>
-    <div id="root"></div>
+    <div id="root"><div class="boot"><img src="./icons/icon-192.png" alt="" width="40" height="40" />MEGS' Cafe</div></div>
     <script type="module" src="/src/main.tsx"></script>
   </body>
 </html>

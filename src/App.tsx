@@ -1,16 +1,19 @@
-import { useEffect, useRef, useState } from 'react'
+import { lazy, Suspense, useEffect, useRef, useState } from 'react'
 import { HashRouter, Route, Routes, useLocation, useNavigate } from 'react-router-dom'
 import { AppStateProvider, useApp } from './state/AppState'
 import { index, overlayIndex, routes, staffIndex } from './routes'
 import { ComingSoon } from './screens/shop'
 import { OverlayHost, useOverlay } from './overlays/OverlayHost'
-import { StaffApp } from './staff/StaffApp'
 import { useAutoAdvance, useShared } from './state/shared'
 import { OfflineIndicator, UpdateBanner } from './components/pwa'
 import { AppNav } from './components/AppNav'
 import { tabs } from './components/tabs'
 import { useShortcuts } from './state/shortcuts'
 import './app-shell.css'
+
+// The staff console is its own bundle: customers never download it. Precached like the rest, so it
+// still opens offline once the app is installed.
+const StaffApp = lazy(() => import('./staff/StaffApp').then((m) => ({ default: m.StaffApp })))
 
 /** Shrinks the 852px-tall phone frame to fit short desktop windows. */
 function usePhoneScale() {
@@ -189,7 +192,14 @@ export default function App() {
     <HashRouter>
       <Routes>
         {/* The staff console has its own shell, outside the phone frame */}
-        <Route path="/staff/*" element={<StaffApp />} />
+        <Route
+          path="/staff/*"
+          element={
+            <Suspense fallback={<div className="staff-loading" aria-busy="true" />}>
+              <StaffApp />
+            </Suspense>
+          }
+        />
         <Route path="*" element={<CustomerApp />} />
       </Routes>
     </HashRouter>

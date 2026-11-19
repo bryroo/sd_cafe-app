@@ -28,9 +28,10 @@ import { Button, Checkbox, Photo } from '../components/ui'
 import { ClosedBanner, FulfillmentSummary, OfflineBanner } from '../components/order'
 import { InstallCard } from '../components/pwa'
 import interiorPhoto from '../assets/photos/interior-banquette.webp'
-import lattesPhoto from '../assets/photos/iced-lattes-banquette.webp'
-import cupsPhoto from '../assets/photos/ube-choco-matcha-cups.webp'
-import wingsPhoto from '../assets/photos/wings-and-drinks.webp'
+// Home tiles use 560px copies (src/assets/photos/*-tile.webp); the full photos stay for full-screen use
+import lattesPhoto from '../assets/photos/iced-lattes-banquette-tile.webp'
+import cupsPhoto from '../assets/photos/ube-choco-matcha-cups-tile.webp'
+import wingsPhoto from '../assets/photos/wings-and-drinks-tile.webp'
 import {
   boards,
   collections,
@@ -49,7 +50,7 @@ import { useOverlay } from '../overlays/OverlayHost'
 import { featuredPromotion, nextReward } from '../data/rewards'
 import { useApp } from '../state/AppState'
 import { retryConnection, useOnline } from '../state/online'
-import { etaLine, stepLabel } from '../state/shared'
+import { etaLine, stepLabel, useShared } from '../state/shared'
 import './shop.css'
 
 /** Shared handler for product rows: the whole row opens the product page, where options are chosen. */
@@ -94,19 +95,10 @@ export function Home() {
   const { open } = useProductActions()
   const overlay = useOverlay()
   const forcedLoading = params.get('state') === 'loading'
-  const [loading, setLoading] = useState(!homeHasLoaded || forcedLoading)
-
-  useEffect(() => {
-    if (forcedLoading) {
-      setLoading(true)
-      return
-    }
-    const t = setTimeout(() => {
-      homeHasLoaded = true
-      setLoading(false)
-    }, 700)
-    return () => clearTimeout(t)
-  }, [forcedLoading])
+  // Skeletons only until the account's data is in (once per visit); `?state=loading` keeps them for demos
+  const { ready } = useShared()
+  if (ready) homeHasLoaded = true
+  const loading = forcedLoading || !homeHasLoaded
 
   // O-01 Promo modal greets a newly signed-up member once.
   useEffect(() => {
