@@ -9,6 +9,7 @@
     "lint": "eslint .",
     "preview": "vite preview",
     "test": "vitest run",
+    "test:db": "npx supabase test db supabase/tests/database",
     "coverage": "vitest run --coverage --coverage.include=supabase/functions/_shared/pricing.ts"
   },
   "dependencies": {
