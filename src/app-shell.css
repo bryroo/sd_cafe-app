@@ -174,3 +174,47 @@ html:has(.app) body { overscroll-behavior: none; background: var(--ground); }
   transform: translateY(-200%);
 }
 .skip-link:focus { transform: none; }
+
+/* ---------- Desktop: wider screens use the room (Screen layout="wide") ---------- */
+@media (min-width: 1024px) {
+  .app__screen .screen--wide { --column: 1080px; }
+
+  /* Lists of items in two columns: Home's boards, sections, search, the menu */
+  .app__screen .screen--wide .menu-board { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .app__screen .screen--wide .menu-board > .mitem:nth-child(2)::before { display: none; }
+
+  /* Menu: the pickup line and the rail + list sit in the same centred column */
+  .app__screen .screen--wide .menu-split__where,
+  .app__screen .screen--wide .menu-split__cols {
+    width: 100%;
+    max-width: var(--column);
+    margin-inline: auto;
+  }
+  .app__screen .screen--wide .menu-split__cols { border-inline: 1px solid var(--border); }
+
+  /* Product: photo on the left (stays in view), name and options on the right */
+  .app__screen .screen--wide .pdp__content {
+    display: grid;
+    grid-template-columns: minmax(0, 5fr) minmax(0, 6fr);
+    column-gap: var(--space-8);
+    align-items: start;
+  }
+  .app__screen .screen--wide .pdp__content > .row:first-child {
+    grid-column: 1;
+    grid-row: 1 / span 40;
+    position: sticky;
+    top: 0;
+  }
+  .app__screen .screen--wide .pdp__content > .row:not(:first-child) { grid-column: 2; }
+
+  /* Rewards catalog: as many cards across as fit */
+  .app__screen .screen--wide .reward-grid { grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); }
+}
+@media (min-width: 1024px) {
+  /* Menu list: each section's items in two columns under its full-width title */
+  .app__screen .screen--wide .menu-list__section { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .app__screen .screen--wide .menu-list__title { grid-column: 1 / -1; }
+  .app__screen .screen--wide .menu-list__section > .mitem:nth-child(3)::before { display: none; }
+  /* Home's category photos: landscape, so the tiles don't fill the screen */
+  .app__screen .screen--wide .category-cell__photo { aspect-ratio: 16 / 9; }
+}

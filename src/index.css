@@ -221,3 +221,29 @@ h3 {
   text-decoration-thickness: 1.5px;
   text-underline-offset: 3px;
 }
+
+/* ---------- App feel ---------- */
+
+/* Keyboard focus is always visible; components with their own ring keep it */
+:focus-visible { outline: 2px solid var(--ink); outline-offset: 2px; }
+.live-order:focus-visible,
+.poster:focus-visible,
+.cart-bar:focus-visible,
+.st-rail :focus-visible { outline-color: var(--gold); }
+
+/* Touch screens: 16px text in fields so iOS doesn't zoom in on focus */
+@media (pointer: coarse) {
+  input,
+  textarea,
+  select,
+  .st-input--small { font-size: max(16px, 1em); }
+}
+
+/* A new screen settles in quickly (120ms); nothing moves with reduced motion */
+.app__screen .screen { animation: screen-in 0.12s ease-out; }
+@keyframes screen-in {
+  from { opacity: 0; transform: translateY(4px); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .app__screen .screen { animation: none; }
+}

@@ -127,6 +127,7 @@ function useRewardState() {
 export function Rewards() {
   const navigate = useNavigate()
   const { points, myRewards } = useApp()
+  const { ready } = useShared()
   const recent = useActivity()
   const stateOf = useRewardState()
   const unused = myRewards.filter((r) => r.status === 'Redeemed').length
@@ -137,7 +138,12 @@ export function Rewards() {
         <Row>
           <div className="card points-card">
             <span className="t-caption muted">Points balance</span>
-            <span className="t-display">{fmt(points)}</span>
+            {/* First load: a bar, not a "0" that jumps to the real balance */}
+            {ready ? (
+              <span className="t-display">{fmt(points)}</span>
+            ) : (
+              <span className="skeleton skeleton--plate" style={{ width: 120, height: 32 }} aria-label="Loading points" />
+            )}
             <span className="t-body-sm muted">
               {nextReward(points).text}
             </span>
@@ -205,7 +211,7 @@ export function RewardCatalog() {
   const stateOf = useRewardState()
 
   return (
-    <Screen
+    <Screen layout="wide"
       topBar={
         <>
           <TopBar title="Rewards catalog" />

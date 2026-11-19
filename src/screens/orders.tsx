@@ -1,7 +1,7 @@
 // Flow 4 — Order tracking and history (C-17, C-18, C-19)
 import { useEffect, useRef, useState } from 'react'
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom'
-import { BottomNav, Tabs } from '../components/blocks'
+import { BottomNav, CardSkeleton, Tabs } from '../components/blocks'
 import {
   Alert,
   FulfillmentBadge,
@@ -33,6 +33,7 @@ import {
   type Fulfillment,
   type Order,
   type OrderStatus,
+  useShared,
 } from '../state/shared'
 import './orders.css'
 
@@ -330,6 +331,7 @@ export function Orders() {
   const [params, setParams] = useSearchParams()
   const tab = params.get('tab') === 'history' ? 'history' : 'active'
   const { activeOrders, myOrders } = useApp()
+  const { ready } = useShared()
   const reorder = useReorder()
   const done = myOrders.filter((o) => o.status === 'Completed' || o.status === 'Cancelled')
 
@@ -353,7 +355,14 @@ export function Orders() {
       bottomNav={<BottomNav active="orders" />}
     >
       <Content>
-        {tab === 'active' ? (
+        {/* First load: card outlines instead of a false "No active orders" */}
+        {!ready && myOrders.length === 0 ? (
+          [0, 1].map((i) => (
+            <Row key={i}>
+              <CardSkeleton />
+            </Row>
+          ))
+        ) : tab === 'active' ? (
           activeOrders.length ? (
             activeOrders.map((o) => (
               <Row key={o.number}>

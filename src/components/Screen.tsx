@@ -96,6 +96,8 @@ type ScreenProps = {
   footerBorder?: boolean
   /** Status bar colours when it sits over a dark header but the rest of the screen is light. */
   statusTheme?: Theme
+  /** Desktop width: `wide` screens (menu, product, home) use a wider column and multi-column lists. */
+  layout?: 'column' | 'wide'
 }
 
 /** Screen frame: status bar, optional top bar, scrolling body, sticky footer, home indicator. */
@@ -111,9 +113,10 @@ export function Screen({
   statusOverlay = false,
   footerBorder = false,
   statusTheme,
+  layout = 'column',
 }: ScreenProps) {
   return (
-    <div className={`screen screen--bg-${bg}`}>
+    <div className={`screen screen--bg-${bg} screen--${layout}`}>
       {statusOverlay ? (
         <div className="screen__status-overlay">
           <StatusBar theme={statusTheme ?? theme} />

@@ -8,6 +8,8 @@ import { StaffApp } from './staff/StaffApp'
 import { useAutoAdvance, useShared } from './state/shared'
 import { OfflineIndicator, UpdateBanner } from './components/pwa'
 import { AppNav } from './components/AppNav'
+import { tabs } from './components/tabs'
+import { useShortcuts } from './state/shortcuts'
 import './app-shell.css'
 
 /** Shrinks the 852px-tall phone frame to fit short desktop windows. */
@@ -144,8 +146,12 @@ function PhoneFrame() {
   )
 }
 
+const SECTIONS = tabs.map((t) => t.path)
+
 /** The customer app: bottom tabs on phones, a rail on tablets, a sidebar on desktops */
 function AppLayout() {
+  // Alt+1…5 for the tabs, "/" for search
+  useShortcuts(SECTIONS, '/search')
   return (
     <div className="app">
       <a className="skip-link" href="#main" onClick={(e) => {

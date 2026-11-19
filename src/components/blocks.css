@@ -639,3 +639,15 @@
 
 /* UI-05: every chip answers a 48px tap, though it draws at 36px */
 .chip::after { content: ''; position: absolute; inset: -6px 0; }
+
+/* Card skeleton (Orders, Rewards while the account first loads) */
+.card-skeleton {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 16px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-card);
+}
+.skeleton--plate { background: var(--plate-steel); }

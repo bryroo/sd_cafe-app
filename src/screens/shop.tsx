@@ -140,7 +140,7 @@ export function Home() {
   )
 
   return (
-    <Screen
+    <Screen layout="wide"
       topBar={
         <TopBar
           type="home"
@@ -336,7 +336,7 @@ export function Menu() {
   }
 
   return (
-    <Screen
+    <Screen layout="wide"
       topBar={
         <TopBar
           type="title"
@@ -410,7 +410,7 @@ export function SectionList() {
   const items = all.filter((p) => filter === 'All' || (p.kind === 'food' ? filter === 'Hot' : p.temps?.includes(filter)))
 
   return (
-    <Screen topBar={<TopBar title={section.title} />} overlay={<LiveCartBar withNav={false} />}>
+    <Screen layout="wide" topBar={<TopBar title={section.title} />} overlay={<LiveCartBar withNav={false} />}>
       <Content>
         {hasTemps && (
           <Row>
@@ -469,7 +469,7 @@ export function Search() {
   }
 
   return (
-    <Screen
+    <Screen layout="wide"
       topBar={
         <div className="search-bar">
           <label className="search-field search-field--focused">
@@ -649,7 +649,7 @@ function ProductPage({ id }: { id: string }) {
   }
 
   return (
-    <Screen
+    <Screen layout="wide"
       footerBorder
       footer={
         <div className="pdp__footer">

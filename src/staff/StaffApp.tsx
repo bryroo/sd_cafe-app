@@ -7,6 +7,7 @@ import { Icon, type IconName } from '../components/Icon'
 import { Lamp } from '../components/Lamp'
 import { LogoMark } from '../components/ui'
 import { UpdateBanner } from '../components/pwa'
+import { useShortcuts } from '../state/shortcuts'
 import { useOnline } from '../state/online'
 import { failNextWrite, openState, setStore, useShared, clock, lastSynced } from '../state/shared'
 import { Modal, NewOrders, StaffButton, StaffCtx, type StaffApi } from './kit'
@@ -25,6 +26,9 @@ const DESTS: Dest[] = [
   { to: '/staff/responses', label: 'Responses', icon: 'message', match: '/staff/responses' },
   { to: '/staff/settings', label: 'Settings', icon: 'sliders', match: '/staff/settings' },
 ]
+
+/** Alt+1…5 jumps to these, in navigation order */
+const SECTIONS = DESTS.map((d) => d.to)
 
 /** Two short tones for a new order (no sound file needed) */
 function chime() {
@@ -52,6 +56,8 @@ export function StaffApp() {
   const location = useLocation()
   const navigate = useNavigate()
   const online = useOnline()
+  // Alt+1…5 for the sections, "/" to the page's search box
+  useShortcuts(SECTIONS)
   const [now, setNow] = useState(Date.now())
   const [toast, setToast] = useState<{ text: string; action?: { label: string; onClick: () => void }; id: number } | null>(null)
   const [error, setError] = useState<{ retry: () => void; message?: string } | null>(null)

@@ -367,6 +367,18 @@ export function ProductRowSkeleton() {
   )
 }
 
+/** Card skeleton (Orders, Rewards while the account first loads): a white card with flat bars. */
+export function CardSkeleton({ lines = 3 }: { lines?: number }) {
+  const widths = [140, 220, 96, 180]
+  return (
+    <div className="card-skeleton" aria-hidden>
+      {Array.from({ length: lines }, (_, i) => (
+        <span key={i} className="skeleton" style={{ width: widths[i % widths.length], height: i === 0 ? 20 : 14 }} />
+      ))}
+    </div>
+  )
+}
+
 /** A white plate holding menu-board rows. */
 export function MenuBoard({ children }: { children: ReactNode }) {
   return <div className="menu-board">{children}</div>
