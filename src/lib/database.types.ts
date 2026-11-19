@@ -97,14 +97,14 @@ isOneToOne: true
                   ]
                 },"customer": {
                   Row: {
-                    "birthday": string | null,"created_at": string,"customer_id": string,"default_drink_size": string | null,"email": string | null,"favorite_cafe_id": number | null,"full_name": string,"mobile_no": string,"mobile_verified_at": string | null,"notify_order_updates": boolean,"notify_promotions": boolean,"notify_rewards_reminders": boolean,"points_balance": number,"promo_consent_at": string | null,"terms_accepted_at": string,"tier_id": number,"updated_at": string
+                    "birthday": string | null,"created_at": string,"customer_id": string,"default_drink_size": string | null,"email": string | null,"favorite_cafe_id": number | null,"full_name": string,"is_demo": boolean,"mobile_no": string,"mobile_verified_at": string | null,"notify_order_updates": boolean,"notify_promotions": boolean,"notify_rewards_reminders": boolean,"points_balance": number,"promo_consent_at": string | null,"terms_accepted_at": string,"tier_id": number,"updated_at": string
                   }
                   ComputedFields: never
                   Insert: {
-                    "birthday"?: string | null,"created_at"?: string,"customer_id": string,"default_drink_size"?: string | null,"email"?: string | null,"favorite_cafe_id"?: number | null,"full_name": string,"mobile_no": string,"mobile_verified_at"?: string | null,"notify_order_updates"?: boolean,"notify_promotions"?: boolean,"notify_rewards_reminders"?: boolean,"points_balance"?: number,"promo_consent_at"?: string | null,"terms_accepted_at": string,"tier_id": number,"updated_at"?: string
+                    "birthday"?: string | null,"created_at"?: string,"customer_id": string,"default_drink_size"?: string | null,"email"?: string | null,"favorite_cafe_id"?: number | null,"full_name": string,"is_demo"?: boolean,"mobile_no": string,"mobile_verified_at"?: string | null,"notify_order_updates"?: boolean,"notify_promotions"?: boolean,"notify_rewards_reminders"?: boolean,"points_balance"?: number,"promo_consent_at"?: string | null,"terms_accepted_at": string,"tier_id": number,"updated_at"?: string
                   }
                   Update: {
-                    "birthday"?: string | null,"created_at"?: string,"customer_id"?: string,"default_drink_size"?: string | null,"email"?: string | null,"favorite_cafe_id"?: number | null,"full_name"?: string,"mobile_no"?: string,"mobile_verified_at"?: string | null,"notify_order_updates"?: boolean,"notify_promotions"?: boolean,"notify_rewards_reminders"?: boolean,"points_balance"?: number,"promo_consent_at"?: string | null,"terms_accepted_at"?: string,"tier_id"?: number,"updated_at"?: string
+                    "birthday"?: string | null,"created_at"?: string,"customer_id"?: string,"default_drink_size"?: string | null,"email"?: string | null,"favorite_cafe_id"?: number | null,"full_name"?: string,"is_demo"?: boolean,"mobile_no"?: string,"mobile_verified_at"?: string | null,"notify_order_updates"?: boolean,"notify_promotions"?: boolean,"notify_rewards_reminders"?: boolean,"points_balance"?: number,"promo_consent_at"?: string | null,"terms_accepted_at"?: string,"tier_id"?: number,"updated_at"?: string
                   }
                   Relationships: [
                     {

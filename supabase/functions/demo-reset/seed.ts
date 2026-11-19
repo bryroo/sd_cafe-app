@@ -103,7 +103,8 @@ export async function seedDemo(db: SupabaseClient) {
     if (error) throw error
     ids[p.key] = data.user.id
   }
-  must(await db.from('customer').update({ mobile_verified_at: ago(90 * DAY).toISOString(), created_at: ago(90 * DAY).toISOString() }).in('customer_id', Object.values(ids)))
+  // is_demo: only these accounts may use demo_set_points (the screen index's points shortcut)
+  must(await db.from('customer').update({ is_demo: true, mobile_verified_at: ago(90 * DAY).toISOString(), created_at: ago(90 * DAY).toISOString() }).in('customer_id', Object.values(ids)))
 
   // Addresses and payment methods (FR-PRF-03, FR-PRF-04)
   const [home, , leoWork] = must(
