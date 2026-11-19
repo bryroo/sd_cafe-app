@@ -117,7 +117,7 @@ export function Onboarding({ slide }: { slide: number }) {
       overlay={
         <Button
           variant="secondary"
-          height={40}
+          height={48}
           full={false}
           className="onboarding__skip"
           onClick={() => {
@@ -371,7 +371,7 @@ export function Verification() {
         <Row>
           <div className="sent-to">
             <span className="t-body muted">Sent to {toIntl(phone)}</span>
-            <Button variant="text" height={40} full={false} onClick={() => navigate(-1)}>
+            <Button variant="text" height={48} full={false} onClick={() => navigate(-1)}>
               Edit
             </Button>
           </div>

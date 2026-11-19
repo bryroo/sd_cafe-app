@@ -225,7 +225,7 @@ export function OrderCard({
         <span className="t-price">{peso(total)}</span>
         <span className="t-caption muted">{when}</span>
       </div>
-      <button className="btn btn--secondary btn--full order-card__action" style={{ height: 40 }} onClick={onAction}>
+      <button className="btn btn--secondary btn--full order-card__action" style={{ height: 48 }} onClick={onAction}>
         <span className="t-button">{action}</span>
       </button>
     </div>
