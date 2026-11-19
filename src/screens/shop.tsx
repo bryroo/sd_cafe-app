@@ -275,7 +275,7 @@ export function Menu() {
   const navigate = useNavigate()
   const [params] = useSearchParams()
   const { open } = useProductActions()
-  const { fulfillment, addresses, addressId, open: shop } = useApp()
+  const { fulfillment, addresses, addressId, open: shop, cartCount } = useApp()
   const online = useOnline()
   const address = addresses.find((a) => a.id === addressId)
   const all = railSections().flatMap((g) => g.items)
@@ -343,7 +343,8 @@ export function Menu() {
       <div className="menu-split__where">
         {!online && <OfflineBanner onRetry={retryConnection}>You're offline. This is the menu saved on this phone.</OfflineBanner>}
         {!shop.open && <ClosedBanner {...shop} />}
-        <FulfillmentSummary type={fulfillment} address={address} onChange={() => navigate('/fulfillment')} />
+        {/* How the next order is collected: only once there is something to collect */}
+        {cartCount > 0 && <FulfillmentSummary type={fulfillment} address={address} onChange={() => navigate('/fulfillment')} />}
       </div>
       <div className="menu-split__cols">
         <nav className="menu-rail" ref={railRef} aria-label="Menu sections">
