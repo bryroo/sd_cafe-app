@@ -32,6 +32,7 @@ import { useOverlay } from '../overlays/OverlayHost'
 import { DRINK_SIZES, resetDemo, useApp } from '../state/AppState'
 import { customerDataExport, markNoteRead, saveProfile, useShared, type CustomerNote } from '../state/shared'
 import { isIos, promptInstall, usePwa } from '../state/pwa'
+import { useValidation } from '../state/forms'
 import './profile.css'
 
 /** Row / Settings — icon, label, optional value, chevron. Renders as a button only when it does something. */
@@ -562,7 +563,14 @@ export function AddPaymentMethod() {
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
   const digits = number.replace(/\D/g, '')
-  const valid = digits.length >= 12 && holder.trim() && /^\d{2}\s*\/\s*\d{2}$/.test(expiry.trim())
+  const v = useValidation(
+    {
+      number: digits.length >= 12 ? undefined : 'Enter the full card number (12 or more digits).',
+      holder: holder.trim() ? undefined : 'Enter the name as it appears on the card.',
+      expiry: /^\d{2}\s*\/\s*\d{2}$/.test(expiry.trim()) ? undefined : 'Enter the expiry as MM / YY, like 08 / 28.',
+    },
+    (k) => `pm-${k}`,
+  )
 
   return (
     <Screen
@@ -570,9 +578,10 @@ export function AddPaymentMethod() {
       topBar={<TopBar title="Add payment method" />}
       footer={
         <Button
-          disabled={!valid || busy}
+          disabled={busy}
           aria-busy={busy}
           onClick={async () => {
+            if (!v.check()) return
             // NFR-SEC-03 / IR-01: only the last four digits and a token are kept, never the card number
             setBusy(true)
             setError('')
@@ -606,30 +615,40 @@ export function AddPaymentMethod() {
         </Row>
         <Row>
           <TextField
+            id="pm-number"
             label="Card number"
-            placeholder="Enter card number"
+            placeholder="1234 5678 9012 3456"
             inputMode="numeric"
             autoComplete="off"
             value={number}
+            error={v.err('number')}
+            onBlur={() => v.touch('number')}
             onChange={(e) => setNumber(e.target.value)}
           />
         </Row>
         <Row>
           <TextField
+            id="pm-holder"
             label="Name on card"
-            placeholder="Enter name on card"
+            placeholder="Maria Santos"
             autoComplete="off"
             value={holder}
+            error={v.err('holder')}
+            onBlur={() => v.touch('holder')}
             onChange={(e) => setHolder(e.target.value)}
           />
         </Row>
         <Row>
           <TextField
+            id="pm-expiry"
             label="Expiry"
-            placeholder="Enter expiry"
-            helper="MM / YY"
+            placeholder="MM / YY"
+            helper="Month and year, like 08 / 28"
+            inputMode="numeric"
             autoComplete="off"
             value={expiry}
+            error={v.err('expiry')}
+            onBlur={() => v.touch('expiry')}
             onChange={(e) => setExpiry(e.target.value)}
           />
         </Row>

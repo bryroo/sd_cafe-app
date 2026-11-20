@@ -28,6 +28,7 @@ import {
   type Address,
 } from '../state/AppState'
 import { useOverlay } from '../overlays/OverlayHost'
+import { useValidation } from '../state/forms'
 import './checkout.css'
 
 /** Totals for the current cart, fulfillment and discount choice. */
@@ -127,12 +128,21 @@ export function DeliveryAddress() {
   const [street, setStreet] = useState(existing?.street ?? '')
   const [landmark, setLandmark] = useState('')
   const [notes, setNotes] = useState(existing?.notes ?? '')
-  const valid = recipient.trim() && mobile.trim() && street.trim()
+  const [more, setMore] = useState(!!existing?.notes)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
+  const v = useValidation(
+    {
+      recipient: recipient.trim() ? undefined : "Enter the name of the person receiving the order.",
+      mobile: mobile.replace(/\D/g, '').length >= 10 ? undefined : 'Enter a mobile number the rider can call, like 0917 123 4567.',
+      street: street.trim() ? undefined : 'Enter the house number, street, barangay and city.',
+    },
+    (k) => `ad-${k}`,
+  )
 
   // The order is delivered to an address saved on the account (the server reads it when ordering)
   const submit = async () => {
+    if (!v.check()) return
     const a: Address = {
       id: existing?.id ?? `addr-${Date.now()}`,
       label: existing?.label ?? 'Other',
@@ -161,47 +171,61 @@ export function DeliveryAddress() {
         <Row>
           <div className="address-form">
             <TextField
+              id="ad-recipient"
               label="Recipient name"
-              helper="Required"
               placeholder={name}
               value={recipient}
+              error={v.err('recipient')}
+              onBlur={() => v.touch('recipient')}
               onChange={(e) => setRecipient(e.target.value)}
               autoComplete="name"
             />
             <TextField
+              id="ad-mobile"
               label="Mobile number"
-              helper="Required"
               placeholder={phone}
               inputMode="tel"
               value={mobile}
+              error={v.err('mobile')}
+              onBlur={() => v.touch('mobile')}
               onChange={(e) => setMobile(e.target.value)}
               autoComplete="tel"
             />
             <TextField
+              id="ad-street"
               label="Street address"
-              helper="Required"
               placeholder="House no., street, barangay, city"
               value={street}
+              error={v.err('street')}
+              onBlur={() => v.touch('street')}
               onChange={(e) => setStreet(e.target.value)}
               autoComplete="street-address"
             />
-            <TextField
-              label="Building, unit or landmark"
-              helper="Optional"
-              placeholder="e.g. Unit 8B, near the church"
-              value={landmark}
-              onChange={(e) => setLandmark(e.target.value)}
-            />
-            <TextArea
-              label="Delivery notes"
-              helper="Optional"
-              placeholder="e.g. Leave at the door"
-              value={notes}
-              onChange={setNotes}
-            />
+            {more ? (
+              <>
+                <TextField
+                  label="Building, unit or landmark (optional)"
+                  placeholder="e.g. Unit 8B, near the church"
+                  value={landmark}
+                  onChange={(e) => setLandmark(e.target.value)}
+                />
+                <TextArea
+                  label="Delivery notes (optional)"
+                  placeholder="e.g. Leave at the door"
+                  value={notes}
+                  onChange={setNotes}
+                />
+              </>
+            ) : (
+              <div>
+                <Button variant="text" height={48} full={false} icon={<Icon name="plus" size={20} />} onClick={() => setMore(true)}>
+                  Add unit, landmark or delivery notes
+                </Button>
+              </div>
+            )}
             <p className="t-body-sm muted">Saved to your addresses, so you can pick it again next time.</p>
             {error && <Alert tone="danger">{error}</Alert>}
-            <Button disabled={!valid || busy} onClick={submit} aria-busy={busy}>
+            <Button disabled={busy} onClick={submit} aria-busy={busy}>
               {busy ? 'Saving…' : 'Save address'}
             </Button>
           </div>
