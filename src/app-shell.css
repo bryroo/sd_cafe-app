@@ -11,15 +11,15 @@
   padding: 20px 16px 40px;
   background: var(--desk-panel);
   border-right: 1px solid var(--desk-edge);
-  font-size: 13px;
+  font-size: var(--text-sm);
 }
 .shell__brand {
   font-weight: 700;
-  font-size: 14px;
+  font-size: var(--text-sm);
   margin-bottom: 16px;
 }
 .shell__index h2 {
-  font-size: 11px;
+  font-size: var(--text-caption);
   text-transform: uppercase;
   letter-spacing: 0.06em;
   color: var(--color-text-muted);
@@ -34,7 +34,7 @@
   display: flex;
   gap: 8px;
   padding: 5px 8px;
-  border-radius: 6px;
+  border-radius: var(--radius-card);
   color: var(--color-text);
   text-decoration: none;
 }
@@ -105,7 +105,7 @@
 .shell__note {
   margin: 0 0 6px;
   color: var(--color-text-muted);
-  font-size: 12px;
+  font-size: var(--text-caption);
   line-height: 16px;
 }
 

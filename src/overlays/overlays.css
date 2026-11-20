@@ -10,7 +10,7 @@
 .overlay-scrim {
   position: absolute;
   inset: 0;
-  background: rgba(20, 20, 20, 0.55);
+  background: var(--scrim);
   animation: fade-in 0.15s ease-out;
 }
 @keyframes fade-in {

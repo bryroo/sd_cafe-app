@@ -31,7 +31,7 @@
 .processing-scrim {
   position: absolute;
   inset: 0;
-  background: rgba(20, 20, 20, 0.4);
+  background: var(--scrim);
   z-index: 5;
   animation: fade-in 0.15s ease-out;
 }
@@ -74,7 +74,7 @@
   place-items: center;
   border-radius: var(--radius-card);
   background: var(--plate);
-  color: #e9e9e6;
+  color: var(--plate-lamp);
   --lamp-bg: var(--plate);
 }
 .confirmation__items { padding: 16px 16px 8px; }

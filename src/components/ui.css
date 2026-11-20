@@ -140,7 +140,7 @@
   min-width: 0;
   height: 56px;
   text-align: center;
-  font-size: 24px;
+  font-size: var(--text-h1);
   line-height: 28px;
   font-weight: 600;
   font-variant-numeric: tabular-nums;

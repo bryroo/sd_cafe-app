@@ -29,7 +29,7 @@
   flex-shrink: 0;
   border-radius: var(--radius-button);
   background: var(--plate);
-  color: #e9e9e6;
+  color: var(--plate-lamp);
   display: grid;
   place-items: center;
   --lamp-bg: var(--plate);
@@ -101,7 +101,7 @@
   color: var(--on-dark-muted);
 }
 .fulfillment-details__number-value {
-  font-size: 28px;
+  font-size: var(--text-display);
   line-height: 34px;
   font-weight: 700;
   font-stretch: 118%;
@@ -319,11 +319,11 @@ button.option-row:hover .option-row__label { text-decoration: underline; text-un
   --lamp-bg: var(--ground);
 }
 .conduit--dark {
-  --pipe-done: #8d8d89;
-  --pipe-off: #3d3d3b;
-  --lamp-done: #8d8d89;
-  --lamp-off: #5a5a57;
-  --lamp-lit: #e9e9e6;
+  --pipe-done: var(--plate-dim);
+  --pipe-off: var(--plate-off);
+  --lamp-done: var(--plate-dim);
+  --lamp-off: var(--plate-off-strong);
+  --lamp-lit: var(--plate-lamp);
   --lamp-bg: var(--plate);
 }
 .conduit__step {
@@ -362,7 +362,7 @@ button.option-row:hover .option-row__label { text-decoration: underline; text-un
   padding-top: 12px;
 }
 .conduit__step--off .conduit__text { color: var(--faint); }
-.conduit--dark .conduit__step--off .conduit__text { color: #8d8d89; }
+.conduit--dark .conduit__step--off .conduit__text { color: var(--plate-dim); }
 .conduit__time { color: var(--muted); }
 .conduit--dark .conduit__time { color: var(--on-dark-muted); }
 .conduit__step--lit .lamp__pool { animation: lamp-warm 2.4s ease-in-out infinite; }
