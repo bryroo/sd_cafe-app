@@ -251,6 +251,8 @@ function OverlayContent({
 
     /* O-02 Quick add */
     case 'quick-add':
+      // Guests can't add to a cart (the menu never offers it to them; this covers any other way in)
+      if (!app.isMember) return null
       return <QuickAddSheet productId={String(data.productId)} close={close} />
 
     /* O-03 Log in to place your order */

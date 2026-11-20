@@ -23,7 +23,7 @@ function tabFor(path: string) {
 export function AppNav() {
   const navigate = useNavigate()
   const { pathname } = useLocation()
-  const { cartCount, cartTotal } = useApp()
+  const { cartCount, cartTotal, isMember } = useApp()
   const active = tabFor(pathname)
   const unread = useUnreadCount()
   const glow = useCartGlow()
@@ -54,7 +54,7 @@ export function AppNav() {
           )
         })}
       </ul>
-      {cartCount > 0 && (
+      {isMember && cartCount > 0 && (
         <button className="app-nav__cart" onClick={() => navigate('/cart')} aria-label={`Cart, ${cartCount} item${cartCount === 1 ? '' : 's'}, ${peso(cartTotal)}`}>
           <span key={glow} className={`app-nav__cart-count num ${glow ? 'is-glowing' : ''}`}>
             {cartCount}

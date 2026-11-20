@@ -51,6 +51,7 @@ import { featuredPromotion, nextReward } from '../data/rewards'
 import { useApp } from '../state/AppState'
 import { signalCartAdded, useUnreadCount } from '../state/feedback'
 import { readFirstRun, setFirstRun } from '../state/firstRun'
+import { useGuestGate } from '../state/guest'
 import { summarize } from './orders'
 import { useReorder } from '../state/reorder'
 import { retryConnection, useOnline } from '../state/online'
@@ -62,15 +63,19 @@ import './shop.css'
 function useProductActions() {
   const navigate = useNavigate()
   const overlay = useOverlay()
+  const { requireMember } = useGuestGate()
   const open = (id: string) => navigate(`/product/${id}`)
-  const add = (id: string) => overlay.open('quick-add', { productId: id })
+  // Guests browse only: the "+" asks them to log in, then brings them back to this item
+  const add = (id: string) =>
+    requireMember(() => overlay.open('quick-add', { productId: id }), { next: `/product/${id}` })
   return { open, add }
 }
 
 /** Cart bar wired to app state. */
 export function LiveCartBar({ withNav = true }: { withNav?: boolean }) {
   const navigate = useNavigate()
-  const { cartCount, cartTotal } = useApp()
+  const { cartCount, cartTotal, isMember } = useApp()
+  if (!isMember) return null
   return <CartBar count={cartCount} total={cartTotal} withNav={withNav} onClick={() => navigate('/cart')} />
 }
 
@@ -206,7 +211,10 @@ export function Home() {
         <TopBar
           type="home"
           title={guest ? "Welcome to MEGS'" : `Hi, ${firstName}`}
-          actions={<TopBarAction label="Notifications" icon="bell" badge={unread} onClick={() => navigate('/notifications')} />}
+          actions={
+            // Notifications are an account feature
+            !guest && <TopBarAction label="Notifications" icon="bell" badge={unread} onClick={() => navigate('/notifications')} />
+          }
         />
       }
       bottomNav={<BottomNav active="home" />}
@@ -661,9 +669,10 @@ export function ProductDetail() {
 function ProductPage({ id }: { id: string }) {
   const [params] = useSearchParams()
   const navigate = useNavigate()
-  const { addToCart, updateLine, cart, defaultSize } = useApp()
+  const { addToCart, updateLine, cart, defaultSize, isMember } = useApp()
+  const { requireMember } = useGuestGate()
   const product = productById(id)
-  const editing = cart.find((l) => l.key === params.get('edit') && l.productId === id)
+  const editing = isMember ? cart.find((l) => l.key === params.get('edit') && l.productId === id) : undefined
 
   const groups = useMemo(() => (product ? optionGroupsFor(product) : []), [product])
 
@@ -748,15 +757,26 @@ function ProductPage({ id }: { id: string }) {
       footerBorder
       footer={
         <div className="pdp__footer">
-          <Stepper value={qty} onChange={setQty} />
+          {/* Guests see the item, its options and price; ordering needs an account */}
+          {isMember && <Stepper value={qty} onChange={setQty} />}
           <Button
-            onClick={add}
+            onClick={() => requireMember(add, { next: `/product/${product.id}` })}
             disabled={adding || !product.available}
             aria-busy={adding}
             className="pdp__add btn--split"
             height={52}
           >
-            <span>{!product.available ? 'Sold out' : adding ? 'Added' : editing ? 'Update item' : 'Add to order'}</span>
+            <span>
+              {!product.available
+                ? 'Sold out'
+                : !isMember
+                  ? 'Log in to order'
+                  : adding
+                    ? 'Added'
+                    : editing
+                      ? 'Update item'
+                      : 'Add to order'}
+            </span>
             <span className="num">{peso(unit * qty)}</span>
           </Button>
         </div>
@@ -824,23 +844,25 @@ function ProductPage({ id }: { id: string }) {
           </Row>
         ))}
 
-        <Row>
-          {noteOpen ? (
-            <TextArea
-              label="Special instructions"
-              placeholder="e.g. less ice"
-              helper="Optional · up to 140 characters"
-              value={note}
-              onChange={setNote}
-            />
-          ) : (
-            <div>
-              <Button variant="text" height={48} full={false} icon={<Icon name="note" size={20} />} onClick={() => setNoteOpen(true)}>
-                Add a note
-              </Button>
-            </div>
-          )}
-        </Row>
+        {isMember && (
+          <Row>
+            {noteOpen ? (
+              <TextArea
+                label="Special instructions"
+                placeholder="e.g. less ice"
+                helper="Optional · up to 140 characters"
+                value={note}
+                onChange={setNote}
+              />
+            ) : (
+              <div>
+                <Button variant="text" height={48} full={false} icon={<Icon name="note" size={20} />} onClick={() => setNoteOpen(true)}>
+                  Add a note
+                </Button>
+              </div>
+            )}
+          </Row>
+        )}
       </div>
     </Screen>
   )

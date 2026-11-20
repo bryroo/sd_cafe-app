@@ -6,6 +6,7 @@ import { Icon, type IconName } from './Icon'
 import { tabs, type Tab } from './tabs'
 import { Lamp } from './Lamp'
 import { useCartGlow, useUnreadCount } from '../state/feedback'
+import { useApp } from '../state/AppState'
 import './blocks.css'
 
 /* ---------- Navigation ---------- */
@@ -333,6 +334,7 @@ export function ProductThumb({ product, size = 'M' }: { product: Product; size?:
 }
 
 export function ProductRow({ product: p, onOpen, onAdd, hideBadge }: ProductCardProps) {
+  const { isMember } = useApp()
   const badge = p.badges.find((b) => b !== hideBadge)
   const soldOut = !p.available
   return (
@@ -352,8 +354,8 @@ export function ProductRow({ product: p, onOpen, onAdd, hideBadge }: ProductCard
       </button>
       <button
         className="mitem__add"
-        aria-label={soldOut ? `${p.name} is sold out` : `Quick add ${p.name}`}
-        title={soldOut ? undefined : 'Quick add'}
+        aria-label={soldOut ? `${p.name} is sold out` : isMember ? `Quick add ${p.name}` : `Log in to order ${p.name}`}
+        title={soldOut ? undefined : isMember ? 'Quick add' : 'Log in to order'}
         onClick={onAdd ?? onOpen}
         disabled={soldOut}
       >
