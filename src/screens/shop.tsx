@@ -50,6 +50,7 @@ import { useOverlay } from '../overlays/OverlayHost'
 import { featuredPromotion, nextReward } from '../data/rewards'
 import { useApp } from '../state/AppState'
 import { signalCartAdded, useUnreadCount } from '../state/feedback'
+import { readFirstRun, setFirstRun } from '../state/firstRun'
 import { summarize, useReorder } from './orders'
 import { retryConnection, useOnline } from '../state/online'
 import { etaLine, stepLabel, useShared } from '../state/shared'
@@ -85,6 +86,59 @@ const groupPhotos: Record<string, { photo: string; position: string }> = {
   Coffee: { photo: lattesPhoto, position: '50% 70%' },
   'Non-Coffee': { photo: cupsPhoto, position: '40% 50%' },
   Food: { photo: wingsPhoto, position: '30% 75%' },
+}
+
+/** First-run help, learned by doing: three real tasks that tick themselves off. Hidden once all
+ *  three are done or the customer closes it (remembered on this device). */
+function GetStarted() {
+  const navigate = useNavigate()
+  const { cartCount, myOrders } = useApp()
+  const [flags, setFlags] = useState(readFirstRun)
+  const steps = [
+    { label: 'Pick something from the menu', done: cartCount > 0 || myOrders.length > 0, to: '/menu' },
+    { label: 'Place your first order', done: myOrders.length > 0, to: '/cart' },
+    { label: 'See your points and rewards', done: !!flags.seenRewards, to: '/rewards' },
+  ]
+  const left = steps.filter((s) => !s.done).length
+  if (flags.dismissed || left === 0) return null
+  return (
+    <section className="get-started" aria-labelledby="get-started-title">
+      <div className="get-started__head">
+        <h2 id="get-started-title" className="t-h3">
+          Get started
+        </h2>
+        <span className="t-body-sm muted">
+          {steps.length - left} of {steps.length} done
+        </span>
+        <button
+          className="get-started__close"
+          aria-label="Hide Get started"
+          onClick={() => {
+            setFirstRun({ dismissed: true })
+            setFlags((f) => ({ ...f, dismissed: true }))
+          }}
+        >
+          <Icon name="close" size={20} />
+        </button>
+      </div>
+      <ol className="get-started__steps">
+        {steps.map((s) => (
+          <li key={s.label}>
+            <button className={`get-started__step ${s.done ? 'is-done' : ''}`} onClick={() => navigate(s.to)} disabled={s.done}>
+              <span className="get-started__tick" aria-hidden>
+                {s.done && <Icon name="check" size={16} />}
+              </span>
+              <span className="t-body">
+                {s.label}
+                {s.done && <span className="sr-only"> (done)</span>}
+              </span>
+              {!s.done && <Icon name="chevron" size={20} color="var(--muted)" />}
+            </button>
+          </li>
+        ))}
+      </ol>
+    </section>
+  )
 }
 
 let homeHasLoaded = false
@@ -175,6 +229,11 @@ export function Home() {
         {!shop.open && (
           <Row>
             <ClosedBanner {...shop} />
+          </Row>
+        )}
+        {!loading && !guest && (
+          <Row>
+            <GetStarted />
           </Row>
         )}
         {!loading && (

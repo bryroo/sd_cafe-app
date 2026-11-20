@@ -13,25 +13,6 @@
   padding: var(--space-8) 0 var(--space-24);
 }
 
-/* The photo takes whatever height the phone has left, so no screen ends in a blank band above Next */
-.onboarding__content {
-  flex: 1 0 auto;
-  gap: 16px;
-  padding-top: 0;
-}
-.onboarding__content > .photo {
-  flex: 1 0 auto;
-  min-height: 340px;
-  height: auto !important;
-  margin-bottom: 12px;
-}
-.onboarding__skip {
-  position: absolute;
-  right: 16px;
-  top: 62px;
-  border-width: 0 !important;
-}
-
 /* Welcome — the room first, then the name, left-aligned like the lettering on the wall */
 .welcome__content {
   flex: 1 0 0;

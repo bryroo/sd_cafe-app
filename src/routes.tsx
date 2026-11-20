@@ -1,9 +1,9 @@
 import type { ReactNode } from 'react'
+import { Navigate } from 'react-router-dom'
 import type { useApp } from './state/AppState'
 import {
   ForgotPassword,
   LogIn,
-  Onboarding,
   ResetPassword,
   SignUp,
   Splash,
@@ -80,9 +80,8 @@ const delivery = (app: App) => {
 export const routes: RouteDef[] = [
   // Flow 1
   { path: '/', element: <Splash /> },
-  { path: '/onboarding/1', element: <Onboarding slide={0} /> },
-  { path: '/onboarding/2', element: <Onboarding slide={1} /> },
-  { path: '/onboarding/3', element: <Onboarding slide={2} /> },
+  // The onboarding slides were replaced by Home's Get started card; old links land on Welcome
+  { path: '/onboarding/:n', element: <Navigate to="/welcome" replace /> },
   { path: '/welcome', element: <Welcome /> },
   { path: '/sign-up', element: <SignUp /> },
   { path: '/verify', element: <Verification /> },
@@ -130,9 +129,6 @@ export const index: IndexGroup[] = [
     title: 'Launch and account',
     entries: [
       { code: 'C-01', label: 'Splash', to: '/' },
-      { code: 'C-02', label: 'Onboarding 1', to: '/onboarding/1' },
-      { code: 'C-02', label: 'Onboarding 2', to: '/onboarding/2' },
-      { code: 'C-02', label: 'Onboarding 3', to: '/onboarding/3' },
       { code: 'C-03', label: 'Welcome', to: '/welcome' },
       { code: 'C-04', label: 'Sign up', to: '/sign-up' },
       { code: 'C-05', label: 'Verification', to: '/verify' },

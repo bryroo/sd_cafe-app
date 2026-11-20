@@ -291,6 +291,16 @@ h3 {
 
 .icon { display: block; flex-shrink: 0; }
 
+/* Read by screen readers, not shown */
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+}
+
 /* Type. One family, Archivo. Titles take the semi-expanded width of the cafe's wall lettering. */
 .t-display {
   font-size: var(--text-display);

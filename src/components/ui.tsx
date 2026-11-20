@@ -111,15 +111,17 @@ export function Checkbox({
   checked,
   onChange,
   priceDelta,
+  id,
 }: {
   label: ReactNode
   checked: boolean
   onChange: (v: boolean) => void
   priceDelta?: string
+  id?: string
 }) {
   return (
     <label className="checkbox">
-      <input type="checkbox" checked={checked} onChange={(e) => onChange(e.target.checked)} />
+      <input id={id} type="checkbox" checked={checked} onChange={(e) => onChange(e.target.checked)} />
       <span className={`checkbox__box ${checked ? 'is-checked' : ''}`}>
         {checked && <Icon name="check" size={16} color="var(--on-dark)" />}
       </span>
@@ -171,11 +173,19 @@ export function OtpInput({ value, onChange }: { value: string; onChange: (v: str
           }}
           className="otp__digit"
           inputMode="numeric"
-          maxLength={1}
+          // The first box takes a whole code from the phone's autofill ("From Messages")
+          autoComplete={i === 0 ? 'one-time-code' : 'off'}
+          maxLength={i === 0 ? 6 : 1}
           value={d}
           aria-label={`Digit ${i + 1}`}
           onChange={(e) => {
-            const ch = e.target.value.replace(/\D/g, '').slice(-1)
+            const raw = e.target.value.replace(/\D/g, '')
+            if (i === 0 && raw.length > 1) {
+              onChange(raw.slice(0, 6))
+              refs.current[Math.min(raw.length, 6) - 1]?.focus()
+              return
+            }
+            const ch = raw.slice(-1)
             const next = digits.slice()
             next[i] = ch
             onChange(next.join(''))
@@ -193,17 +203,6 @@ export function OtpInput({ value, onChange }: { value: string; onChange: (v: str
             refs.current[Math.min(pasted.length, 5)]?.focus()
           }}
         />
-      ))}
-    </div>
-  )
-}
-
-/** Pagination / Dots */
-export function PaginationDots({ count = 3, active }: { count?: number; active: number }) {
-  return (
-    <div className="dots" aria-label={`Slide ${active + 1} of ${count}`}>
-      {Array.from({ length: count }, (_, i) => (
-        <span key={i} className={i === active ? 'is-active' : ''} />
       ))}
     </div>
   )

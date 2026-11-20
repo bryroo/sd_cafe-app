@@ -8,39 +8,19 @@ import {
   Loader,
   Logo,
   OtpInput,
-  PaginationDots,
   PasswordField,
   Photo,
   RuleCheck,
   TextField,
 } from '../components/ui'
 import { Alert, OfflineBanner } from '../components/order'
+import { Icon } from '../components/Icon'
 import { toIntl, useApp } from '../state/AppState'
 import { useOverlay } from '../overlays/OverlayHost'
 import { retryConnection, useOnline } from '../state/online'
 import { customerLogin, customerSignUp, isMobileRegistered, useShared } from '../state/shared'
-import lineupPhoto from '../assets/photos/iced-coffee-lineup.webp'
-import wingsPhoto from '../assets/photos/wings-and-drinks.webp'
-import logoWallPhoto from '../assets/photos/logo-wall-breakfast.webp'
 import interiorPhoto from '../assets/photos/interior-banquette.webp'
 import './account.css'
-
-/** Onboarding shows on the first launch only; Reset demo data clears this with the rest */
-const ONBOARDED = 'megs.onboarded'
-const onboarded = () => {
-  try {
-    return window.localStorage.getItem(ONBOARDED) === '1'
-  } catch {
-    return false
-  }
-}
-const markOnboarded = () => {
-  try {
-    window.localStorage.setItem(ONBOARDED, '1')
-  } catch {
-    /* storage blocked: onboarding shows again next time, which is harmless */
-  }
-}
 
 /** C-01 Splash */
 export function Splash() {
@@ -50,8 +30,9 @@ export function Splash() {
   const { ready } = useShared()
   useEffect(() => {
     if (!ready) return
-    // SRS FR-ACC-09 / FR-ACC-10: Home for a valid session, onboarding on the first launch only, otherwise Welcome
-    const next = session === 'member' ? '/home' : onboarded() ? '/welcome' : '/onboarding/1'
+    // SRS FR-ACC-09: Home for a valid session, otherwise Welcome. First-time help is the Get started card on
+    // Home, where people learn by doing, instead of slides before they can see the menu.
+    const next = session === 'member' ? '/home' : '/welcome'
     const t = setTimeout(() => navigate(next, { replace: true }), 1200)
     return () => clearTimeout(t)
   }, [navigate, session, ready])
@@ -63,83 +44,6 @@ export function Splash() {
           <Logo height={200} />
         </span>
         <Loader />
-      </div>
-    </Screen>
-  )
-}
-
-// Each slide is a crop of the cafe's own photographs.
-const slides = [
-  {
-    title: 'Order ahead, skip the queue',
-    body: 'Pick your drink, choose pickup or delivery, and it is ready when you are.',
-    photo: lineupPhoto,
-    position: '50% 62%',
-    alt: "A row of iced lattes and an americano under the cafe's black wall lamps",
-  },
-  {
-    title: 'Earn points, get rewards',
-    body: 'Every order earns points toward free drinks and treats.',
-    photo: wingsPhoto,
-    position: '50% 38%',
-    alt: "Five baskets of chicken wings with ube, chocolate and matcha drinks in MEGS' cups",
-  },
-  {
-    title: 'Track your order live',
-    body: 'See every step from the counter to your hands, with a nudge when it is ready.',
-    photo: logoWallPhoto,
-    position: '50% 42%',
-    alt: "Rice meals and iced drinks at the counter, under the MEGS' crowned logo and The best time is coffee time",
-  },
-]
-
-/** C-02 Onboarding / Slide 1–3 */
-export function Onboarding({ slide }: { slide: number }) {
-  const navigate = useNavigate()
-  const last = slide === slides.length - 1
-  const { title, body, photo, position, alt } = slides[slide]
-
-  return (
-    <Screen
-      bg="surface"
-      statusOverlay
-      statusTheme="dark"
-      footer={
-        <Button
-          onClick={() => {
-            if (last) markOnboarded()
-            navigate(last ? '/welcome' : `/onboarding/${slide + 2}`)
-          }}
-        >
-          {last ? 'Get started' : 'Next'}
-        </Button>
-      }
-      overlay={
-        <Button
-          variant="secondary"
-          height={48}
-          full={false}
-          className="onboarding__skip"
-          onClick={() => {
-            markOnboarded()
-            navigate('/welcome')
-          }}
-        >
-          Skip
-        </Button>
-      }
-    >
-      <div className="content onboarding__content">
-        <Photo src={photo} alt={alt} height={472} position={position} />
-        <Row>
-          <h1 className="t-h1">{title}</h1>
-        </Row>
-        <Row>
-          <p className="t-body muted">{body}</p>
-        </Row>
-        <Row>
-          <PaginationDots active={slide} />
-        </Row>
       </div>
     </Screen>
   )
@@ -231,20 +135,40 @@ export function SignUp() {
       clearTimeout(t)
     }
   }, [mobile])
-  const valid = name.trim() !== '' && digits(mobile).length >= 10 && !taken && strong && agreed
+  // Messages show after a field is left, or on Continue; they say what to fix, not just "invalid"
+  const [shown, setShown] = useState<Record<string, boolean>>({})
+  const show = (k: string) => setShown((v) => ({ ...v, [k]: true }))
+  const problems: Record<string, string | undefined> = {
+    name: name.trim() ? undefined : 'Enter your name.',
+    mobile: taken
+      ? 'This number already has an account.'
+      : digits(mobile).length === 10
+        ? undefined
+        : 'Enter an 11-digit mobile number, like 0917 123 4567.',
+    email: !email.trim() || /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim()) ? undefined : 'Enter an email like name@example.com, or leave it empty.',
+    password: strong ? undefined : 'Use 8 or more characters, with at least one number.',
+    agreed: agreed ? undefined : 'Tick the box to agree to the Terms and Privacy Policy.',
+  }
+  const err = (k: string) => (shown[k] || (k === 'mobile' && taken) ? problems[k] : undefined)
+  const order = ['name', 'mobile', 'email', 'password', 'agreed']
+
+  const submit = () => {
+    setShown(Object.fromEntries(order.map((k) => [k, true])))
+    const first = order.find((k) => problems[k])
+    if (first) {
+      document.getElementById(`su-${first}`)?.focus()
+      return
+    }
+    setPhone(mobile)
+    pendingSignUp = { name, phone: mobile, email, password }
+    navigate('/verify')
+  }
 
   return (
     <Screen
       topBar={<TopBar />}
       footer={
-        <Button
-          disabled={!valid || !online}
-          onClick={() => {
-            setPhone(mobile)
-            pendingSignUp = { name, phone: mobile, email, password }
-            navigate('/verify')
-          }}
-        >
+        <Button disabled={!online} onClick={submit}>
           Continue
         </Button>
       }
@@ -259,18 +183,28 @@ export function SignUp() {
           </Row>
         )}
         <Row>
-          <TextField label="Name" value={name} onChange={(e) => setName(e.target.value)} autoComplete="name" />
+          <TextField
+            id="su-name"
+            label="Name"
+            value={name}
+            onChange={(e) => setName(e.target.value)}
+            onBlur={() => show('name')}
+            error={err('name')}
+            autoComplete="name"
+          />
         </Row>
         <Row>
           <TextField
+            id="su-mobile"
             label="Mobile number"
             helper="We will text you a 6-digit code"
             placeholder="0917 123 4567"
             value={mobile}
             onChange={(e) => setMobile(e.target.value)}
+            onBlur={() => show('mobile')}
             inputMode="tel"
             autoComplete="tel"
-            error={taken ? 'This number already has an account.' : undefined}
+            error={err('mobile')}
           />
           {taken && (
             <Button
@@ -285,24 +219,39 @@ export function SignUp() {
         </Row>
         <Row>
           <TextField
+            id="su-email"
             label="Email (optional)"
-            placeholder="Enter email"
+            placeholder="name@example.com"
             type="email"
             value={email}
             onChange={(e) => setEmail(e.target.value)}
+            onBlur={() => show('email')}
+            error={err('email')}
+            autoComplete="email"
           />
         </Row>
         <Row>
           <PasswordField
+            id="su-password"
             label="Password"
             helper="8 or more characters, with at least one number"
             value={password}
             onChange={(e) => setPassword(e.target.value)}
+            onBlur={() => show('password')}
+            error={err('password')}
             autoComplete="new-password"
           />
         </Row>
         <Row>
-          <Checkbox label="I agree to the Terms and Privacy Policy" checked={agreed} onChange={setAgreed} />
+          <div className="field">
+            <Checkbox id="su-agreed" label="I agree to the Terms and Privacy Policy" checked={agreed} onChange={setAgreed} />
+            {err('agreed') && (
+              <p className="field__error t-caption" role="alert">
+                <Icon name="alert" size={16} />
+                {err('agreed')}
+              </p>
+            )}
+          </div>
         </Row>
       </Content>
     </Screen>
@@ -427,7 +376,15 @@ export function LogIn() {
     return () => clearInterval(t)
   }, [locked])
 
+  const [missing, setMissing] = useState<{ id?: string; password?: string }>({})
+
   const submit = async () => {
+    const m = { id: id.trim() ? undefined : 'Enter your mobile number or email.', password: password ? undefined : 'Enter your password.' }
+    setMissing(m)
+    if (m.id || m.password) {
+      document.getElementById(m.id ? 'li-id' : 'li-password')?.focus()
+      return
+    }
     setBusy(true)
     const r = await customerLogin(id, password)
     setBusy(false)
@@ -454,7 +411,7 @@ export function LogIn() {
     <Screen
       topBar={<TopBar />}
       footer={
-        <Button disabled={!id || !password || locked || !online || busy} onClick={submit} aria-busy={busy}>
+        <Button disabled={locked || !online || busy} onClick={submit} aria-busy={busy}>
           {busy ? 'Logging in…' : 'Log in'}
         </Button>
       }
@@ -489,20 +446,30 @@ export function LogIn() {
         )}
         <Row>
           <TextField
+            id="li-id"
             label="Mobile number or email"
             value={id}
+            error={missing.id}
             onChange={(e) => {
               setId(e.target.value)
               setLockedUntil(0)
+              setMissing((v) => ({ ...v, id: undefined }))
             }}
+            inputMode="email"
             autoComplete="username"
           />
         </Row>
         <Row>
           <PasswordField
+            id="li-password"
             label="Password"
             value={password}
-            onChange={(e) => setPassword(e.target.value)}
+            error={missing.password}
+            onChange={(e) => {
+              setPassword(e.target.value)
+              setMissing((v) => ({ ...v, password: undefined }))
+            }}
+            onKeyDown={(e) => e.key === 'Enter' && submit()}
             autoComplete="current-password"
             helper="Demo password: password1"
           />
@@ -523,15 +490,20 @@ export function LogIn() {
 export function ForgotPassword() {
   const navigate = useNavigate()
   const [id, setId] = useState('')
+  const [error, setError] = useState('')
+  const send = () => {
+    if (!id.trim()) {
+      setError('Enter the mobile number or email on your account.')
+      document.getElementById('fp-id')?.focus()
+      return
+    }
+    navigate('/verify?mode=reset')
+  }
 
   return (
     <Screen
       topBar={<TopBar />}
-      footer={
-        <Button disabled={!id} onClick={() => navigate('/verify?mode=reset')}>
-          Send reset code
-        </Button>
-      }
+      footer={<Button onClick={send}>Send reset code</Button>}
     >
       <Content>
         <Row>
@@ -542,10 +514,16 @@ export function ForgotPassword() {
         </Row>
         <Row>
           <TextField
+            id="fp-id"
             label="Mobile number or email"
-            placeholder="Enter mobile number or email"
+            placeholder="0917 123 4567"
             value={id}
-            onChange={(e) => setId(e.target.value)}
+            error={error}
+            onChange={(e) => {
+              setId(e.target.value)
+              setError('')
+            }}
+            autoComplete="username"
           />
         </Row>
       </Content>
@@ -562,31 +540,43 @@ export function ResetPassword() {
   const [confirm, setConfirm] = useState('password1')
   const longEnough = pw.length >= 8
   const hasNumber = /\d/.test(pw)
+  const [tried, setTried] = useState(false)
+  const pwError = tried && !(longEnough && hasNumber) ? 'Use 8 or more characters, with at least one number.' : undefined
+  const confirmError = tried && pw !== confirm ? "The two passwords don't match." : undefined
+  const save = () => {
+    setTried(true)
+    if (!longEnough || !hasNumber) return document.getElementById('rp-new')?.focus()
+    if (pw !== confirm) return document.getElementById('rp-confirm')?.focus()
+    navigate('/log-in?updated=1', { replace: true })
+  }
 
   return (
     <Screen
       topBar={<TopBar />}
-      footer={
-        <Button
-          disabled={!longEnough || !hasNumber || pw !== confirm}
-          onClick={() => navigate('/log-in?updated=1', { replace: true })}
-        >
-          Save password
-        </Button>
-      }
+      footer={<Button onClick={save}>Save password</Button>}
     >
       <Content>
         <Row>
           <h1 className="t-h1">Set a new password</h1>
         </Row>
         <Row>
-          <PasswordField label="New password" value={pw} onChange={(e) => setPw(e.target.value)} autoComplete="new-password" />
+          <PasswordField
+            id="rp-new"
+            label="New password"
+            value={pw}
+            error={pwError}
+            onChange={(e) => setPw(e.target.value)}
+            autoComplete="new-password"
+          />
         </Row>
         <Row>
           <PasswordField
+            id="rp-confirm"
             label="Confirm password"
             value={confirm}
+            error={confirmError}
             onChange={(e) => setConfirm(e.target.value)}
+            autoComplete="new-password"
           />
         </Row>
         <Row>

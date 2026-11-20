@@ -149,23 +149,6 @@
   border-radius: var(--radius-input);
 }
 
-/* Pagination — a run of short steel bars; the current one is lit */
-.dots {
-  display: flex;
-  gap: 8px;
-  align-items: center;
-}
-.dots span {
-  width: 16px;
-  height: 3px;
-  background: var(--control);
-  transition: width 0.2s, background-color 0.2s;
-}
-.dots span.is-active {
-  width: 32px;
-  background: var(--ink);
-}
-
 /* Logo. The artwork is used as a mask so its colour comes from CSS. */
 .logo-mark {
   display: inline-flex;
