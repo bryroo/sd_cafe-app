@@ -2,6 +2,7 @@ import { useEffect, useState, type ReactNode } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { Icon, type IconName } from './Icon'
 import { LogoMark } from './ui'
+import { CountBadge } from './blocks'
 import './screen.css'
 
 type Theme = 'light' | 'dark'
@@ -65,15 +66,22 @@ export function TopBarAction({
   icon,
   onClick,
   pressed,
+  badge = 0,
 }: {
   label: string
   icon: IconName
   onClick?: () => void
   pressed?: boolean
+  /** A count on the icon (unread notifications) */
+  badge?: number
 }) {
+  const full = badge > 0 ? `${label}, ${badge} unread` : label
   return (
-    <button className="top-bar__action" aria-label={label} title={label} onClick={onClick} aria-pressed={pressed}>
-      <Icon name={icon} />
+    <button className="top-bar__action" aria-label={full} title={full} onClick={onClick} aria-pressed={pressed}>
+      <span className="top-bar__action-icon">
+        <Icon name={icon} />
+        <CountBadge count={badge} label="" className="nav-badge" />
+      </span>
     </button>
   )
 }

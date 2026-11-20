@@ -36,9 +36,9 @@ import {
   boards,
   collections,
   defaultChoice,
-  defaultOrder,
   optionGroupsFor,
   peso,
+  priceFor,
   productById,
   products,
   productsIn,
@@ -49,6 +49,8 @@ import {
 import { useOverlay } from '../overlays/OverlayHost'
 import { featuredPromotion, nextReward } from '../data/rewards'
 import { useApp } from '../state/AppState'
+import { useUnreadCount } from '../state/feedback'
+import { summarize, useReorder } from './orders'
 import { retryConnection, useOnline } from '../state/online'
 import { etaLine, stepLabel, useShared } from '../state/shared'
 import './shop.css'
@@ -92,7 +94,9 @@ let promoShown = false
 export function Home() {
   const navigate = useNavigate()
   const [params] = useSearchParams()
-  const { session, name, firstLaunch, activeOrders, promoDismissed, setPromoDismissed, addToCart, points, open: shop } = useApp()
+  const { session, name, firstLaunch, activeOrders, myOrders, promoDismissed, setPromoDismissed, points, open: shop } = useApp()
+  const unread = useUnreadCount()
+  const reorder = useReorder()
   const online = useOnline()
   const activeOrder = activeOrders[0]
   const { open, add } = useProductActions()
@@ -110,7 +114,8 @@ export function Home() {
     overlay.open('promo')
   }, [loading, firstLaunch, session, overlay])
 
-  const reorder = ['caramel-macchiato', 'carbonara'].map(defaultOrder)
+  // Order again: the customer's most recent completed order, at today's prices
+  const lastDone = [...myOrders].sort((a, b) => b.placedAt - a.placedAt).find((o) => o.status === 'Completed')
   const guest = session !== 'member'
   const firstName = name.trim().split(/\s+/)[0] || 'there'
   const showOrderStuff = !guest && !firstLaunch
@@ -146,7 +151,7 @@ export function Home() {
         <TopBar
           type="home"
           title={guest ? "Welcome to MEGS'" : `Hi, ${firstName}`}
-          actions={<TopBarAction label="Notifications" icon="bell" onClick={() => navigate('/notifications')} />}
+          actions={<TopBarAction label="Notifications" icon="bell" badge={unread} onClick={() => navigate('/notifications')} />}
         />
       }
       bottomNav={<BottomNav active="home" />}
@@ -224,19 +229,17 @@ export function Home() {
           </Row>
         )}
 
-        {!loading && showOrderStuff && (
+        {!loading && showOrderStuff && lastDone && (
           <>
             <Row>
-              <SectionHeader title="Order again" />
+              <SectionHeader title="Order again" onLink={() => navigate('/orders?tab=history')} />
             </Row>
             <Row>
               <ReorderCard
-                summary={reorder.map((l) => productById(l.productId)!.name).join(', ')}
-                total={reorder.reduce((s, l) => s + l.unitPrice, 0)}
-                onReorder={() => {
-                  reorder.forEach((l) => addToCart({ ...l, note: '', qty: 1 }))
-                  navigate('/cart')
-                }}
+                summary={summarize(lastDone.lines)}
+                sub={`Order #${lastDone.number}`}
+                total={lastDone.lines.reduce((s, l) => s + (priceFor(l.productId, l.options) ?? l.unitPrice) * l.qty, 0)}
+                onReorder={() => reorder(lastDone.lines)}
               />
             </Row>
           </>

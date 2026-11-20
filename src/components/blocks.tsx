@@ -281,10 +281,12 @@ export function CategoryTile({
 /** Card / Reorder */
 export function ReorderCard({
   summary,
+  sub,
   total,
   onReorder,
 }: {
   summary: string
+  sub?: string
   total: number
   onReorder: () => void
 }) {
@@ -292,6 +294,7 @@ export function ReorderCard({
     <div className="reorder-card">
       <span className="reorder-card__text">
         <span className="t-h3">{summary}</span>
+        {sub && <span className="t-body-sm muted">{sub}</span>}
         <span className="t-price">{peso(total)}</span>
       </span>
       <button className="btn btn--secondary" style={{ height: 48 }} onClick={onReorder}>
@@ -686,7 +689,7 @@ export function EmptyState({
 export function CountBadge({ count, label, className = '' }: { count: number; label: string; className?: string }) {
   if (count <= 0) return null
   return (
-    <span className={`count-badge t-caption num ${className}`} aria-label={label}>
+    <span className={`count-badge t-caption num ${className}`} aria-label={label || undefined} aria-hidden={label ? undefined : true}>
       {count > 9 ? '9+' : count}
     </span>
   )

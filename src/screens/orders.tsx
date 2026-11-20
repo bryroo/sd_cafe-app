@@ -304,7 +304,7 @@ export const refundNote = (o: Pick<Order, 'paymentStatus' | 'payment'>) =>
     : 'You were not charged.'
 
 /** Adds a past order's lines to the cart; asks first (O-08) if some items are off the menu today. */
-function useReorder() {
+export function useReorder() {
   const navigate = useNavigate()
   const overlay = useOverlay()
   const { addToCart } = useApp()

@@ -149,3 +149,4 @@
   padding-block: var(--space-16) var(--space-24);
 }
 .sticky-footer--inline > * { max-width: var(--column, 720px); width: 100%; margin-inline: auto; }
+.top-bar__action-icon { position: relative; display: inline-flex; }
