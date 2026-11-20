@@ -6,6 +6,8 @@ import { Icon } from './Icon'
 import { LogoMark } from './ui'
 import { peso } from '../data/menu'
 import { useApp } from '../state/AppState'
+import { useCartGlow, useUnreadCount } from '../state/feedback'
+import { CountBadge } from './blocks'
 import './app-nav.css'
 
 /** Which tab a path belongs to: /orders/1042 is Orders, /product/x and /search are Menu */
@@ -23,6 +25,8 @@ export function AppNav() {
   const { pathname } = useLocation()
   const { cartCount, cartTotal } = useApp()
   const active = tabFor(pathname)
+  const unread = useUnreadCount()
+  const glow = useCartGlow()
   return (
     <nav className="app-nav" aria-label="Main">
       <button className="app-nav__brand" onClick={() => navigate('/home')} aria-label="MEGS' Cafe home">
@@ -40,7 +44,10 @@ export function AppNav() {
                 onClick={() => navigate(t.path)}
                 title={`${t.label} (Alt+${i + 1})`}
               >
-                <Icon name={t.icon} size={22} />
+                <span className="app-nav__icon">
+                  <Icon name={t.icon} size={22} />
+                  {t.id === 'profile' && <CountBadge count={unread} label={`${unread} unread`} className="nav-badge" />}
+                </span>
                 <span className="app-nav__label">{t.label}</span>
               </button>
             </li>
@@ -48,8 +55,10 @@ export function AppNav() {
         })}
       </ul>
       {cartCount > 0 && (
-        <button className="app-nav__cart" onClick={() => navigate('/cart')}>
-          <span className="app-nav__cart-count num">{cartCount}</span>
+        <button className="app-nav__cart" onClick={() => navigate('/cart')} aria-label={`Cart, ${cartCount} item${cartCount === 1 ? '' : 's'}, ${peso(cartTotal)}`}>
+          <span key={glow} className={`app-nav__cart-count num ${glow ? 'is-glowing' : ''}`}>
+            {cartCount}
+          </span>
           <span className="app-nav__label">
             Cart <span className="num">{peso(cartTotal)}</span>
           </span>

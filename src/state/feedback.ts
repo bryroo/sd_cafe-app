@@ -1,5 +1,7 @@
 // Small UI feedback signals shared across the shell (no app state, nothing persisted).
 import { useEffect, useState } from 'react'
+import { useApp } from './AppState'
+import { useShared } from './shared'
 
 const CART_ADDED = 'megs:cart-added'
 
@@ -17,4 +19,11 @@ export function useCartGlow() {
     return () => window.removeEventListener(CART_ADDED, on)
   }, [])
   return n
+}
+
+/** Unread notifications for the signed-in customer (0 for guests). */
+export function useUnreadCount() {
+  const { notifications } = useShared()
+  const { session } = useApp()
+  return session === 'member' ? notifications.filter((n) => !n.read).length : 0
 }

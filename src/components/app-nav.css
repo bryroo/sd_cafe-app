@@ -99,3 +99,5 @@
   .app-nav__cart .num:not(.app-nav__cart-count) { display: inline; }
   .app-nav__cart .app-nav__label { font-weight: 600; }
 }
+
+.app-nav__icon { position: relative; display: inline-flex; }

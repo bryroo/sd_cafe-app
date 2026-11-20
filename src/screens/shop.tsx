@@ -22,7 +22,7 @@ import {
   TextArea,
 } from '../components/blocks'
 import { Content, Row, Screen, TopBar, TopBarAction } from '../components/Screen'
-import { Badge, ProductThumb } from '../components/blocks'
+import { Badge, EmptyState, ProductThumb } from '../components/blocks'
 import { Icon } from '../components/Icon'
 import { Button, Checkbox, Photo } from '../components/ui'
 import { ClosedBanner, FulfillmentSummary, OfflineBanner } from '../components/order'
@@ -743,14 +743,26 @@ function ProductPage({ id }: { id: string }) {
   )
 }
 
-/** Placeholder used while a flow's screens are being built. */
-export function ComingSoon({ title }: { title: string }) {
+/** Any address the app doesn't know: say so, and offer the two places people usually want. */
+export function NotFound() {
+  const navigate = useNavigate()
   return (
-    <Screen topBar={<TopBar title={title} />}>
+    <Screen topBar={<TopBar title="Page not found" onBack={() => navigate("/home")} />}>
       <Content>
-        <Row>
-          <p className="t-body muted">This screen is not built yet.</p>
-        </Row>
+        <EmptyState
+          illustration="lost"
+          title="We couldn't find that page"
+          action={
+            <>
+              <Button onClick={() => navigate('/home', { replace: true })}>Go to Home</Button>
+              <Button variant="secondary" onClick={() => navigate('/menu', { replace: true })}>
+                Browse the menu
+              </Button>
+            </>
+          }
+        >
+          The link may be old, or the page may have moved.
+        </EmptyState>
       </Content>
     </Screen>
   )

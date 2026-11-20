@@ -1,8 +1,8 @@
-import { lazy, Suspense, useEffect, useRef, useState } from 'react'
+import { lazy, Suspense, useCallback, useEffect, useRef, useState } from 'react'
 import { HashRouter, Route, Routes, useLocation, useNavigate } from 'react-router-dom'
 import { AppStateProvider, useApp } from './state/AppState'
 import { index, overlayIndex, routes, staffIndex } from './routes'
-import { ComingSoon } from './screens/shop'
+import { NotFound } from './screens/shop'
 import { OverlayHost, useOverlay } from './overlays/OverlayHost'
 import { useAutoAdvance, useShared } from './state/shared'
 import { OfflineIndicator, UpdateBanner } from './components/pwa'
@@ -125,7 +125,7 @@ function Screens() {
         {routes.map((r) => (
           <Route key={r.path} path={r.path} element={r.element} />
         ))}
-        <Route path="*" element={<ComingSoon title="Coming soon" />} />
+        <Route path="*" element={<NotFound />} />
       </Routes>
       {/* Inside the screen area so they sit on the phone in the demo frame too */}
       <OfflineIndicator />
@@ -151,10 +151,34 @@ function PhoneFrame() {
 
 const SECTIONS = tabs.map((t) => t.path)
 
+/** After moving to another screen, put keyboard and screen-reader focus on its heading (unless the
+ *  screen already focused something itself, like the search box). Not on the first load. */
+function useRouteFocus() {
+  const { pathname } = useLocation()
+  const first = useRef(true)
+  useEffect(() => {
+    if (first.current) {
+      first.current = false
+      return
+    }
+    const id = requestAnimationFrame(() => {
+      const active = document.activeElement
+      if (active instanceof HTMLElement && /^(INPUT|TEXTAREA|SELECT)$/.test(active.tagName)) return
+      const h1 = document.querySelector<HTMLElement>('.app__screen h1')
+      if (!h1) return
+      if (!h1.hasAttribute('tabindex')) h1.setAttribute('tabindex', '-1')
+      h1.focus({ preventScroll: true })
+    })
+    return () => cancelAnimationFrame(id)
+  }, [pathname])
+}
+
 /** The customer app: bottom tabs on phones, a rail on tablets, a sidebar on desktops */
 function AppLayout() {
-  // Alt+1…5 for the tabs, "/" for search
-  useShortcuts(SECTIONS, '/search')
+  const overlay = useOverlay()
+  // Alt+1…5 for the tabs, "/" for search, "?" for the list of shortcuts
+  useShortcuts(SECTIONS, '/search', useCallback(() => overlay.open('shortcuts'), [overlay]))
+  useRouteFocus()
   return (
     <div className="app">
       <a className="skip-link" href="#main" onClick={(e) => {

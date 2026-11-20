@@ -701,3 +701,12 @@
   100% { box-shadow: 0 0 0 10px transparent; }
 }
 .is-glowing { animation: lamp-glow var(--dur-slow) var(--ease-out) 2; }
+
+/* Nav icons carry a count badge at their top-right */
+.bottom-nav__icon { position: relative; display: inline-flex; }
+.nav-badge { position: absolute; top: -6px; right: -10px; }
+
+/* Tablets and desktops show the cart in the rail/sidebar, so the floating bar is phone-only */
+@media (min-width: 768px) {
+  .app__screen .cart-bar { display: none; }
+}

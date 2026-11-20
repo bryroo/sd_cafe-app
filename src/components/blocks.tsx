@@ -5,6 +5,7 @@ import { peso, type Product } from '../data/menu'
 import { Icon, type IconName } from './Icon'
 import { tabs, type Tab } from './tabs'
 import { Lamp } from './Lamp'
+import { useCartGlow, useUnreadCount } from '../state/feedback'
 import './blocks.css'
 
 /* ---------- Navigation ---------- */
@@ -14,6 +15,7 @@ export type { Tab } from './tabs'
 /** Navigation / BottomNav — the active tab is marked in ink by a steel bar along its top edge. */
 export function BottomNav({ active }: { active: Tab }) {
   const navigate = useNavigate()
+  const unread = useUnreadCount()
   return (
     <nav className="bottom-nav" aria-label="Main">
       {tabs.map((t) => {
@@ -25,7 +27,10 @@ export function BottomNav({ active }: { active: Tab }) {
             aria-current={on ? 'page' : undefined}
             onClick={() => navigate(t.path)}
           >
-            <Icon name={t.icon} size={22} />
+            <span className="bottom-nav__icon">
+              <Icon name={t.icon} size={22} />
+              {t.id === 'profile' && <CountBadge count={unread} label={`${unread} unread`} className="nav-badge" />}
+            </span>
             <span className="t-caption">{t.label}</span>
           </button>
         )
@@ -403,10 +408,13 @@ export function CartBar({
   onClick: () => void
   withNav?: boolean
 }) {
+  const glow = useCartGlow()
   if (count === 0) return null
   return (
     <button className={`cart-bar ${withNav ? '' : 'cart-bar--no-nav'}`} onClick={onClick}>
-      <span className="cart-bar__count t-caption num">{count}</span>
+      <span key={glow} className={`cart-bar__count t-caption num ${glow ? 'is-glowing' : ''}`}>
+        {count}
+      </span>
       <span className="t-button cart-bar__label">View cart</span>
       <span className="t-price">{peso(total)}</span>
       <Icon name="chevron" size={18} />

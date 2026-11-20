@@ -1,6 +1,7 @@
 // Keyboard shortcuts for frequent actions (desktop and tablets with keyboards):
 //   Alt+1…5   switch between the main sections (the order shown in the navigation)
 //   /         jump to search
+//   ?         show the list of shortcuts
 // They never fire while typing in a field, so "/" and digits still type normally there.
 import { useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
@@ -17,7 +18,7 @@ function focusPageSearch() {
   return true
 }
 
-export function useShortcuts(sections: string[], searchPath?: string) {
+export function useShortcuts(sections: string[], searchPath?: string, onHelp?: () => void) {
   const navigate = useNavigate()
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -30,6 +31,11 @@ export function useShortcuts(sections: string[], searchPath?: string) {
         }
         return
       }
+      if (e.key === '?' && onHelp && !e.altKey && !e.ctrlKey && !e.metaKey) {
+        e.preventDefault()
+        onHelp()
+        return
+      }
       if (e.key === '/' && !e.altKey && !e.ctrlKey && !e.metaKey) {
         if (focusPageSearch()) e.preventDefault()
         else if (searchPath) {
@@ -40,5 +46,5 @@ export function useShortcuts(sections: string[], searchPath?: string) {
     }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
-  }, [navigate, sections, searchPath])
+  }, [navigate, sections, searchPath, onHelp])
 }
