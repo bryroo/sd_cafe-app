@@ -497,6 +497,13 @@ export function Notifications() {
   const navigate = useNavigate()
   const { notifications } = useShared()
   const sorted = [...notifications].sort((a, b) => b.at - a.at)
+  const unread = notifications.filter((n) => !n.read)
+  const overlay = useOverlay()
+  // The same per-message update as opening one, for each unread message
+  const markAll = async () => {
+    await Promise.all(unread.map((n) => markNoteRead(n.id)))
+    overlay.toast('All caught up')
+  }
 
   const open = (n: CustomerNote) => {
     markNoteRead(n.id)
@@ -504,7 +511,20 @@ export function Notifications() {
   }
 
   return (
-    <Screen topBar={<TopBar title="Notifications" />}>
+    <Screen
+      topBar={
+        <TopBar
+          title="Notifications"
+          actions={
+            unread.length > 0 && (
+              <Button variant="text" height={48} full={false} onClick={markAll}>
+                Mark all read
+              </Button>
+            )
+          }
+        />
+      }
+    >
       <Content>
         {sorted.length === 0 && (
           <EmptyState illustration="bell" title="No notifications yet">
