@@ -19,6 +19,7 @@ import { toIntl, useApp } from '../state/AppState'
 import { useOverlay } from '../overlays/OverlayHost'
 import { retryConnection, useOnline } from '../state/online'
 import { isIos, promptInstall, usePwa } from '../state/pwa'
+import { safeNext } from '../state/guest'
 import { customerLogin, customerSignUp, isMobileRegistered, useShared } from '../state/shared'
 import interiorPhoto from '../assets/photos/interior-banquette.webp'
 import './account.css'
@@ -142,6 +143,9 @@ let pendingSignUp: { name: string; phone: string; email: string; password: strin
 /** C-04 Sign Up */
 export function SignUp() {
   const navigate = useNavigate()
+  // Where to go once the account exists (a guest who tapped "Log in to order" on an item)
+  const [params] = useSearchParams()
+  const next = safeNext(params.get('next'))
   const { setPhone, name, setName } = useApp()
   const online = useOnline()
   const [mobile, setMobile] = useState('')
@@ -190,7 +194,7 @@ export function SignUp() {
     }
     setPhone(mobile)
     pendingSignUp = { name, phone: mobile, email, password }
-    navigate('/verify')
+    navigate(next ? `/verify?next=${encodeURIComponent(next)}` : '/verify')
   }
 
   return (
@@ -240,7 +244,7 @@ export function SignUp() {
               variant="text"
               height={48}
               full={false}
-              onClick={() => navigate(`/log-in?id=${encodeURIComponent(mobile)}`)}
+              onClick={() => navigate(`/log-in?id=${encodeURIComponent(mobile)}${next ? `&next=${encodeURIComponent(next)}` : ''}`)}
             >
               Log in with this number
             </Button>
@@ -311,7 +315,7 @@ export function Verification() {
       pendingSignUp = null
       setSession('member')
       setFirstLaunch(true)
-      navigate('/home', { replace: true })
+      navigate(safeNext(params.get('next')) ?? '/home', { replace: true })
     } catch (err) {
       setCode('')
       setError(err instanceof Error ? err.message : "Couldn't create your account. Try again.")
@@ -437,7 +441,8 @@ export function LogIn() {
         /* storage blocked: the field is just empty next time */
       }
       setSession('member')
-      navigate('/home', { replace: true })
+      // Back to the item or screen that asked them to log in, else Home
+      navigate(safeNext(params.get('next')) ?? '/home', { replace: true })
       return
     }
     setNow(Date.now())
