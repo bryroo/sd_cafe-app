@@ -1,6 +1,7 @@
 // Settings → Appearance: follow the device (default), or force light or dark.
 // index.html applies the saved choice before the first paint, so there is no flash.
 import { useState } from 'react'
+import { useMedia } from './media'
 
 export type ThemePref = 'system' | 'light' | 'dark'
 const KEY = 'megs.theme'
@@ -43,4 +44,13 @@ export function useTheme(): [ThemePref, (t: ThemePref) => void] {
       setTheme(t)
     },
   ]
+}
+
+/** The Dark mode switch: on when the screen is dark right now (forced, or the device is dark).
+ *  Flipping it forces that theme; Settings → Appearance can hand control back to the device. */
+export function useDarkMode(): [boolean, (on: boolean) => void] {
+  const [theme, setTheme] = useTheme()
+  const deviceDark = useMedia('(prefers-color-scheme: dark)')
+  const dark = theme === 'dark' || (theme === 'system' && deviceDark)
+  return [dark, (on) => setTheme(on ? 'dark' : 'light')]
 }

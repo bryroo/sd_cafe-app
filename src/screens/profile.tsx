@@ -25,6 +25,7 @@ const rowIcons: Record<string, IconName> = {
   Privacy: 'lock',
   'Delete account': 'trash',
   'Reset demo data': 'refresh',
+  'Exit guest mode': 'logout',
   'E-wallet': 'phone',
   'Pay at counter': 'store',
 }
@@ -33,7 +34,7 @@ import { DRINK_SIZES, resetDemo, useApp } from '../state/AppState'
 import { customerDataExport, markNoteRead, saveProfile, useShared, type CustomerNote } from '../state/shared'
 import { isIos, promptInstall, usePwa } from '../state/pwa'
 import { useValidation } from '../state/forms'
-import { useTheme, type ThemePref } from '../state/theme'
+import { useDarkMode, useTheme, type ThemePref } from '../state/theme'
 import './profile.css'
 
 /** Row / Settings — icon, label, optional value, chevron. Renders as a button only when it does something. */
@@ -87,6 +88,23 @@ function Group({ title, children }: { title?: string; children: ReactNode }) {
   )
 }
 
+/** Profile → Display: a quick light/dark switch for this device (Settings keeps "Same as this device") */
+function DarkModeSwitch() {
+  const [dark, setDark] = useDarkMode()
+  return (
+    <>
+      <Row>
+        <p className="t-caption muted">Display</p>
+      </Row>
+      <Row>
+        <div className="card toggles-card">
+          <Toggle label="Dark mode" description="On this device" on={dark} onChange={setDark} />
+        </div>
+      </Row>
+    </>
+  )
+}
+
 const initials = (name: string) =>
   name
     .trim()
@@ -99,7 +117,7 @@ const initials = (name: string) =>
 export function Profile() {
   const navigate = useNavigate()
   const overlay = useOverlay()
-  const { name, session } = useApp()
+  const { name, session, setSession } = useApp()
   const { notifications } = useShared()
   const unread = notifications.filter((n) => !n.read).length
 
@@ -116,9 +134,20 @@ export function Profile() {
           </Button>
         </div>
         <Content>
+          <DarkModeSwitch />
           <Group title="Help">
             <SettingsRow label="Help and support" onClick={() => overlay.open('help')} />
             <SettingsRow label="About MEGS' Cafe" onClick={() => overlay.open('about')} />
+          </Group>
+          {/* Browsing as a guest is a mode, so it needs a way out: back to Welcome */}
+          <Group>
+            <SettingsRow
+              label="Exit guest mode"
+              onClick={() => {
+                setSession('signed-out')
+                navigate('/welcome', { replace: true })
+              }}
+            />
           </Group>
         </Content>
       </Screen>
@@ -149,6 +178,7 @@ export function Profile() {
         <Group title="Inbox">
           <SettingsRow label="Notifications" badge={unread} onClick={() => navigate('/notifications')} />
         </Group>
+        <DarkModeSwitch />
         <Group title="App">
           <SettingsRow label="Settings" onClick={() => navigate('/settings')} />
           <SettingsRow label="Privacy" onClick={() => navigate('/settings/privacy')} />

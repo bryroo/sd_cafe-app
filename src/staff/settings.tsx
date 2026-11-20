@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { Icon } from '../components/Icon'
 import { LogoMark, Toggle } from '../components/ui'
+import { useDarkMode } from '../state/theme'
 import { products } from '../data/menu'
 import {
   DAYS,
@@ -372,6 +373,7 @@ export function Availability() {
 
 export function StaffProfile() {
   const { staff } = useShared()
+  const [dark, setDark] = useDarkMode()
   const navigate = useNavigate()
   const [confirm, setConfirm] = useState(false)
   return (
@@ -381,6 +383,11 @@ export function StaffProfile() {
         <Fact label="Name">{staff.name}</Fact>
         <Fact label="Role">{staff.role}</Fact>
         <Fact label="Username">{staff.username ?? '—'}</Fact>
+      </Panel>
+      <Panel title="Display">
+        <div className="st-toggles">
+          <Toggle label="Dark mode" description="On this device, for the console and the customer app" on={dark} onChange={setDark} />
+        </div>
       </Panel>
       <div>
         <StaffButton variant="danger" icon="logout" onClick={() => setConfirm(true)}>
