@@ -68,7 +68,7 @@ export function PickupOrDelivery() {
           disabled={fulfillment === 'delivery' && !address}
           onClick={() => navigate('/checkout', { replace: true })}
         >
-          Continue to checkout
+          Done
         </Button>
       }
     >

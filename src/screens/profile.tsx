@@ -1,7 +1,7 @@
 // Flow 6 — Profile and settings (C-27 … C-31)
 import { useEffect, useRef, useState, type ReactNode } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
-import { BottomNav, CountBadge, EmptyState, Radio } from '../components/blocks'
+import { BottomNav, CardSkeleton, CountBadge, EmptyState, Radio } from '../components/blocks'
 import { AddressCard, Alert } from '../components/order'
 import { Content, Row, Screen, TopBar } from '../components/Screen'
 import { Button, Checkbox, LogoMark, TextField, Toggle } from '../components/ui'
@@ -495,7 +495,7 @@ const isToday = (at: number) => {
 /** C-30 Notifications — FR-TRK-07: Today and Earlier, unread marked by a dot, bold title and "Unread" */
 export function Notifications() {
   const navigate = useNavigate()
-  const { notifications } = useShared()
+  const { notifications, ready } = useShared()
   const sorted = [...notifications].sort((a, b) => b.at - a.at)
   const unread = notifications.filter((n) => !n.read)
   const overlay = useOverlay()
@@ -526,7 +526,15 @@ export function Notifications() {
       }
     >
       <Content>
-        {sorted.length === 0 && (
+        {/* First load: card outlines instead of a false "No notifications yet" */}
+        {!ready &&
+          sorted.length === 0 &&
+          [0, 1, 2].map((i) => (
+            <Row key={i}>
+              <CardSkeleton lines={2} />
+            </Row>
+          ))}
+        {ready && sorted.length === 0 && (
           <EmptyState illustration="bell" title="No notifications yet">
             Order updates and offers show up here.
           </EmptyState>

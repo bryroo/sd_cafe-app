@@ -20,6 +20,7 @@ import { useOverlay } from '../overlays/OverlayHost'
 import { useApp } from '../state/AppState'
 import { useShared } from '../state/shared'
 import { setFirstRun } from '../state/firstRun'
+import { useCountUp } from '../state/feedback'
 import './rewards.css'
 
 const fmt = (n: number) => n.toLocaleString('en-PH')
@@ -130,6 +131,8 @@ export function Rewards() {
   const { points, myRewards } = useApp()
   // Ticks "See your points" on Home's Get started card
   useEffect(() => setFirstRun({ seenRewards: true }), [])
+  // New points (an order just completed) count up, like the lamp warming
+  const shownPoints = useCountUp(points)
   const { ready } = useShared()
   const recent = useActivity()
   const stateOf = useRewardState()
@@ -143,7 +146,9 @@ export function Rewards() {
             <span className="t-caption muted">Points balance</span>
             {/* First load: a bar, not a "0" that jumps to the real balance */}
             {ready ? (
-              <span className="t-display">{fmt(points)}</span>
+              <span className="t-display num">
+                {fmt(shownPoints)}
+              </span>
             ) : (
               <span className="skeleton skeleton--plate" style={{ width: 120, height: 32 }} aria-label="Loading points" />
             )}
