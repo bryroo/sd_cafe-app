@@ -492,11 +492,10 @@ button.st-alert:hover { background: var(--raised); }
 .st-row__hit:hover { background: var(--raised); }
 .st-row__hit:focus-visible { outline: 2px solid var(--ink); outline-offset: 2px; }
 .st-row > :not(.st-row__hit) { position: relative; pointer-events: none; }
-.st-row__accept,
-.st-row__link,
-.st-tpl__toggle,
-.st-avail__toggle,
-.st-avail__name input { pointer-events: auto; }
+/* The row's own controls take their clicks. They need the same specificity as the rule above
+   (class + one more), or that rule wins and every click lands on the row instead. */
+.st-row > :is(.st-row__accept, .st-row__link, .st-tpl__toggle, .st-avail__toggle),
+.st-row .st-avail__name input { pointer-events: auto; }
 .st-row__who { display: flex; flex-direction: column; min-width: 0; }
 .st-row__mode { display: inline-flex; align-items: center; gap: var(--space-8); }
 .st-row__status { display: inline-flex; flex-wrap: wrap; gap: var(--space-8); }
