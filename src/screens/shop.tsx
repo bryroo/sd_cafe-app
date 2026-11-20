@@ -349,7 +349,14 @@ export function Menu() {
   const { fulfillment, addresses, addressId, open: shop, cartCount } = useApp()
   const online = useOnline()
   const address = addresses.find((a) => a.id === addressId)
-  const all = railSections().flatMap((g) => g.items)
+  // All / Hot / Cold, as on the section lists: every food item is served hot
+  const [temp, setTemp] = useState<'All' | 'Hot' | 'Iced'>('All')
+  const keep = (p: (typeof products)[number]) => temp === 'All' || (p.kind === 'food' ? temp === 'Hot' : !!p.temps?.includes(temp))
+  const itemsIn = (s: Section) => productsIn(s).filter(keep)
+  const groups = railSections()
+    .map((g) => ({ ...g, items: g.items.filter((s) => itemsIn(s.id).length > 0) }))
+    .filter((g) => g.items.length > 0)
+  const all = groups.flatMap((g) => g.items)
   const [active, setActive] = useState<Section>(all[0].id)
   const listRef = useRef<HTMLDivElement>(null)
   const railRef = useRef<HTMLElement>(null)
@@ -416,10 +423,23 @@ export function Menu() {
         {!shop.open && <ClosedBanner {...shop} />}
         {/* How the next order is collected: only once there is something to collect */}
         {cartCount > 0 && <FulfillmentSummary type={fulfillment} address={address} onChange={() => navigate('/fulfillment')} />}
+        <div className="chip-row" role="group" aria-label="Show drinks">
+          {(['All', 'Hot', 'Iced'] as const).map((f) => (
+            <Chip
+              key={f}
+              label={f === 'Iced' ? 'Cold' : f}
+              selected={temp === f}
+              onClick={() => {
+                setTemp(f)
+                if (listRef.current) listRef.current.scrollTop = 0
+              }}
+            />
+          ))}
+        </div>
       </div>
       <div className="menu-split__cols">
         <nav className="menu-rail" ref={railRef} aria-label="Menu sections">
-          {railSections().map((g) => (
+          {groups.map((g) => (
             <div key={g.group || 'top'} className="menu-rail__group">
               {g.group && <span className="menu-rail__label">{g.group}</span>}
               {g.items.map((s) => (
@@ -448,7 +468,7 @@ export function Menu() {
               <h2 id={`sec-${s.id}`} className="t-h3 menu-list__title">
                 {s.title}
               </h2>
-              {productsIn(s.id).map((p) => (
+              {itemsIn(s.id).map((p) => (
                 <ProductRow key={p.id} product={p} onOpen={() => open(p.id)} onAdd={() => add(p.id)} hideBadge={s.badge} />
               ))}
             </section>

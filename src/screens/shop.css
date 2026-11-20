@@ -10,7 +10,7 @@
 
 /* Menu: the pickup line, then a category rail beside one scrolling list */
 .screen__body.menu-split { overflow: hidden; }
-.menu-split__where { padding: 0 16px 12px; flex-shrink: 0; }
+.menu-split__where { padding: 0 var(--space-16) var(--space-12); flex-shrink: 0; display: flex; flex-direction: column; gap: var(--space-8); }
 .menu-split__where:empty { display: none; }
 .menu-split__cols {
   flex: 1 0 0;
