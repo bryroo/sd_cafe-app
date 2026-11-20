@@ -1,5 +1,11 @@
 > Approved 2026-11-20. Owner decisions: D2 merge cart + checkout; D3 Get-started checklist replaces the slides; D5 "+" opens Quick add; D4 Help shows placeholder contact details (owner will supply the real ones). D1: the approved plan keeps "Concrete & lamplight".
 
+> **As built (2026-11-20).** Differences from the plan below:
+> - Spacing tokens keep the existing pixel names (`--space-4` … `--space-48`, adding 20 and 48) instead of `--space-1…8`, which would have clashed with 100+ existing uses.
+> - The keyboard shortcuts sheet was committed with the overlay and shell commits, not as its own feature commit.
+> - Also fixed along the way (not in the plan): staff Accept and row switches were unclickable (CSS specificity), dark-mode contrast on gold badges, an empty `<h1>` in title-less top bars, 320 px reflow on the menu, Edit profile's unsaved "Favorite cafe" field (removed), and a hint when a chosen voucher needs a qualifying item.
+> - Measured task counts (Playwright, touch / keyboard): T1 4 / 4, T2 2 / 2, T3 1 / 1, T4 5 (6 when the reward is only in the catalog) / 5, T5 5 / 5.
+
 # Design plan: MEGS' Cafe redesign (refinement)
 
 ## Context

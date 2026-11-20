@@ -86,10 +86,10 @@ Built with vite-plugin-pwa (Workbox, `generateSW`) in [vite.config.ts](vite.conf
 - Manifest: name, short_name, id/start_url/scope `./`, standalone, theme/background colours, 192/512/maskable icons, shortcuts (Menu, My orders, Rewards), install screenshots. No orientation lock.
 
 ### Interface
-- Layouts: < 768 px uses bottom tabs (each screen's `BottomNav`); 768–1023 px an icon rail; ≥ 1024 px a sidebar (`AppNav`). Phone-designed screens use a centred 720 px column; `<Screen layout="wide">` (Home, Menu, sections, Search, Product, Rewards catalog) uses 1080 px and multi-column lists. Sheets become centred dialogs ≥ 768 px.
+- Layouts: < 768 px uses bottom tabs (each screen's `BottomNav`); 768–1023 px an icon rail; ≥ 1024 px a sidebar (`AppNav`). Phone-designed screens use a centred 720 px column; `<Screen layout="wide">` (Home, Menu, sections, Search, Product, Rewards catalog, Your order) uses 1080 px and multi-column lists. Sheets become centred dialogs ≥ 768 px.
 - `?frame=1` (before the `#`) shows the old phone frame + screen index for demos.
-- Theme follows `prefers-color-scheme`. Ink fills have two roles: `--plate` (black boards that stay dark) and `--ink`/`--on-ink` (controls that invert). `prefers-reduced-motion` turns off the 120 ms screen transition and other motion.
-- Keyboard: Alt+1…5 switches sections (both apps); `/` jumps to search; a visible `:focus-visible` ring; a skip link. Touch: 44 px+ targets, 16 px fields on coarse pointers, safe-area insets, `100dvh`, overscroll off.
+- Theme follows `prefers-color-scheme` unless Settings → Appearance forces one (`megs.theme` in localStorage → `data-theme` on `<html>`, applied by an inline script in index.html before first paint). Ink fills have two roles: `--plate` (black boards that stay dark) and `--ink`/`--on-ink` (controls that invert). Text on a gold fill is always `--on-gold`.
+- Keyboard: Alt+1…5 switches sections (both apps); `/` jumps to search; `?` opens the shortcuts sheet (customer app); a visible `:focus-visible` ring; a skip link. After a route change focus moves to the screen's `<h1>` (no ring on it). Sheets and dialogs trap Tab and return focus to their opener. Touch: 44 px+ targets, 16 px fields on coarse pointers, safe-area insets, `100dvh`, overscroll off.
 
 ### Build and test
 - `npm run build` creates `dist/` with the worker. Test a production build against the local stack: `VITE_SUPABASE_URL=http://127.0.0.1:54321 VITE_SUPABASE_PUBLISHABLE_KEY=<local publishable> npx vite build && npx vite preview` (localhost counts as a secure context, so the worker runs).
@@ -97,4 +97,30 @@ Built with vite-plugin-pwa (Workbox, `generateSW`) in [vite.config.ts](vite.conf
 - The staff console is a lazy chunk (precached, so it still works offline once installed).
 
 ### Before a real launch
-Turn `store_settings.demo_mode` off. Change the staff passwords. Add real SMS OTP (sign-up currently trusts the mobile number). Have a payment gateway issue `provider_token` server-side. Check the Auth sign-in rate limit (all password checks now come from the `sign-in` function). Apply M6b.
+Turn `store_settings.demo_mode` off. Change the staff passwords. Add real SMS OTP (sign-up currently trusts the mobile number). Have a payment gateway issue `provider_token` server-side. Replace the placeholder contact details in `src/data/contact.ts` (Help and support) and set `placeholder: false`. Check the Auth sign-in rate limit (all password checks now come from the `sign-in` function). Apply M6b.
+
+## Design system ("Concrete & lamplight")
+Design rationale and history: [DESIGN_AUDIT.md](DESIGN_AUDIT.md), [DESIGN_PLAN.md](DESIGN_PLAN.md). The personality comes from colour, type, illustration and motion, never from unusual navigation or controls.
+
+### Tokens (`src/index.css`; use them, never raw values)
+- **Colour roles:** `--ground` (page), `--surface` (cards), `--raised`, `--active`, `--border`, `--rule`, `--control`, `--ink`/`--steel`, `--muted`, `--faint`, `--plate`/`--on-plate`/`--on-plate-muted`/`--plate-*` (dark boards), `--on-ink`, `--gold` (only where "a lamp is on": live order, lit step, earned points, selected option, count badges), `--gold-ink` (gold text), `--on-gold`, `--negative`, `--positive`, `--success-bg/ink`, `--warning-bg/ink`, `--scrim`, `--focus`. Dark values live in the media query and under `:root[data-theme='dark']`; keep both in sync.
+- **Type:** one family (Archivo). Use the classes `.t-display` 28/32, `.t-h1` 24/28, `.t-h2` 20/26, `.t-h3` 16/22, `.t-body` 16/24, `.t-body-sm` 14/20, `.t-caption` 12/16, `.t-button`, `.t-price`, `.num` (tabular). In CSS use `var(--text-*)`/`var(--lh-*)`; `--text-metric` 36 is for staff counters only. No other sizes.
+- **Spacing:** `--space-4/8/12/16/20/24/32/48` (named by pixels). Raw values only for 1–2 px hairlines and optical offsets.
+- **Radius:** `--radius-button`/`-input`/`-chip`/`-badge` 4, `--radius-card`/`-modal` 6, `--radius-sheet` 10, `--radius-pill`. **Elevation:** only floating things (sheet, dialog, toast) cast a shadow (`--elevation-2/3`).
+- **Motion:** `--dur-fast` 150 ms (press, toggle), `--dur-base` 200 ms (screen, sheet, toast), `--dur-slow` 250 ms (lamp glow), `--ease-out`. `prefers-reduced-motion` stops all animation and transitions globally. Nothing waits on an animation.
+
+### Components and conventions
+- **Screen frame:** `Screen` + `TopBar` (`back` / `home` / `title`; no title → no heading) + `Content`/`Row`. The `footer` holds the screen's one primary action: pinned to the bottom on phones, inline after the content (sticky only when the content is taller than the window) on tablets and desktops.
+- **Feedback:** one toast system, `useOverlay().toast(text, { label, onClick })` (snackbar, low on the screen; 5 s with an action). Inline messages are `Alert` (tones info/success/warning/danger, optional icon/title/action); `OfflineBanner` and `ClosedBanner` are Alerts. Empty screens use `EmptyState` + `Illustration` (lamp over the missing thing). First loads use `ProductRowSkeleton`/`CardSkeleton`, never a false empty state.
+- **Undo, not "are you sure":** removing a cart line (stepper or swipe, `SwipeRow`) shows Removed · Undo. Dialogs (`overlay.confirm`) only for consequential or server-side actions: cancel order, redeem points, delete account, log out, similar order, payment failures, reset demo.
+- **Sheets vs dialogs:** sheets for choosing (Quick add, Discounts, Payment, Help, About, Shortcuts); dialogs for confirmations. Add new ones as `OverlayId`s in `src/overlays/OverlayHost.tsx`.
+- **Forms:** keep submit enabled; validate on blur and on submit with a specific message under the field (`TextField error`), focus the first problem (`useValidation` in `src/state/forms.ts`). Set `autoComplete` on every field.
+- **Lists:** `ListRow`/`ListGroup` and Profile's `SettingsRow`; count badges with `CountBadge`. Menu rows: the row opens the item, the "+" opens Quick add (standard options).
+- **Cart glow:** call `signalCartAdded()` (src/state/feedback.ts) after adding to the cart; badges use `useCartGlow()`.
+- Contact details for Help and support are placeholders in `src/data/contact.ts` (set `placeholder: false` when real).
+
+### Navigation (customer)
+- Tabs, same order and labels everywhere: **Home · Menu · Orders · Rewards · Profile** (`src/components/tabs.ts`). Cart is not a tab: phones use the floating cart bar on Home/Menu, tablets and desktops the sidebar/rail Cart button.
+- **Your order** is one review screen at `/cart` and `/checkout` (lines, pickup/delivery, discounts, payment, note, total, Place order). `/fulfillment` and `/address/:id` return to it.
+- **Profile** holds only what has no tab: Account (Edit profile, Payment methods, Saved addresses) · Inbox (Notifications) · App (Settings, Privacy) · Help (Help and support, About) · Log out. Delete account lives only in Privacy; Log out only in Profile. Settings: notifications, Appearance, language, install, demo reset.
+- First run: Splash → Welcome (or Home when signed in); `/onboarding/*` redirects to `/welcome`. Home's "Get started" card (device-local flags in `megs.first-run`) teaches by doing. Unknown routes show `NotFound`.
