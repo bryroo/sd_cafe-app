@@ -1,4 +1,4 @@
-import type { ReactNode } from 'react'
+import { useEffect, useState, type ReactNode } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { Icon, type IconName } from './Icon'
 import { LogoMark } from './ui'
@@ -100,7 +100,24 @@ type ScreenProps = {
   layout?: 'column' | 'wide'
 }
 
-/** Screen frame: status bar, optional top bar, scrolling body, sticky footer, home indicator. */
+const WIDE = '(min-width: 768px)'
+
+/** True on tablets and desktops (the rail/sidebar layouts). */
+export function useWide() {
+  const [wide, setWide] = useState(() => typeof window !== 'undefined' && window.matchMedia(WIDE).matches)
+  useEffect(() => {
+    const mq = window.matchMedia(WIDE)
+    const on = () => setWide(mq.matches)
+    mq.addEventListener('change', on)
+    return () => mq.removeEventListener('change', on)
+  }, [])
+  return wide
+}
+
+/** Screen frame: status bar, optional top bar, scrolling body, sticky footer, home indicator.
+ *  The footer holds the screen's one primary action. Phones pin it to the bottom edge; tablets and
+ *  desktops put it right after the content (sticking to the bottom only once the content is taller
+ *  than the window), so the button is never stranded far from what it acts on. */
 export function Screen({
   theme = 'light',
   bg = 'background',
@@ -115,6 +132,12 @@ export function Screen({
   statusTheme,
   layout = 'column',
 }: ScreenProps) {
+  const wide = useWide()
+  const footerEl = footer && (
+    <div className={`sticky-footer ${footerBorder ? 'sticky-footer--border' : ''} ${wide ? 'sticky-footer--inline' : ''}`}>
+      {footer}
+    </div>
+  )
   return (
     <div className={`screen screen--bg-${bg} screen--${layout}`}>
       {statusOverlay ? (
@@ -125,8 +148,11 @@ export function Screen({
         <StatusBar theme={theme} />
       )}
       {topBar}
-      <div className={`screen__body ${bodyClassName}`}>{children}</div>
-      {footer && <div className={`sticky-footer ${footerBorder ? 'sticky-footer--border' : ''}`}>{footer}</div>}
+      <div className={`screen__body ${bodyClassName}`}>
+        {children}
+        {wide && footerEl}
+      </div>
+      {!wide && footerEl}
       {bottomNav}
       <HomeIndicator theme={theme} />
       {overlay}

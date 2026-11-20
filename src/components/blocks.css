@@ -651,3 +651,53 @@
   border-radius: var(--radius-card);
 }
 .skeleton--plate { background: var(--plate-steel); }
+
+/* ---------- Empty states ---------- */
+.empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  gap: var(--space-8);
+  padding: var(--space-32) var(--space-16);
+  max-width: 420px;
+  margin-inline: auto;
+}
+.empty .illustration { color: var(--muted); margin-bottom: var(--space-8); }
+.illustration__bulb { fill: var(--gold); stroke: var(--gold); }
+.empty__action { margin-top: var(--space-12); display: flex; flex-direction: column; gap: var(--space-8); width: 100%; max-width: 320px; }
+
+/* ---------- Count badge: a gold lamp with a number ---------- */
+.count-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 18px;
+  height: 18px;
+  padding: 0 var(--space-4);
+  border-radius: var(--radius-pill);
+  background: var(--gold);
+  color: var(--on-gold);
+  font-weight: 700;
+  line-height: 1;
+}
+
+/* ---------- Grouped list (Profile, Settings) ---------- */
+.list-group { display: flex; flex-direction: column; gap: var(--space-8); }
+.list-group__title { color: var(--muted); text-transform: uppercase; letter-spacing: 0.06em; padding-inline: var(--space-4); }
+.list-group__rows {
+  display: flex;
+  flex-direction: column;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-card);
+  overflow: hidden;
+}
+.list-group__rows > * + * { border-top: 1px solid var(--rule); }
+
+/* The lamp lights: a gold glow when something lands in the cart */
+@keyframes lamp-glow {
+  0% { box-shadow: 0 0 0 0 color-mix(in srgb, var(--gold) 75%, transparent); }
+  100% { box-shadow: 0 0 0 10px transparent; }
+}
+.is-glowing { animation: lamp-glow var(--dur-slow) var(--ease-out) 2; }

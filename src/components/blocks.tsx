@@ -611,3 +611,82 @@ export function ListRow({
 export function Divider() {
   return <hr className="divider" />
 }
+
+/* ---------- Empty states, count badges, grouped lists ---------- */
+
+export type IllustrationName = 'cup' | 'receipt' | 'star' | 'search' | 'bell' | 'offline' | 'lost'
+
+/** Line drawings for empty states: the cafe's black-steel lamp over the thing that's missing. The bulb
+ *  is the only gold, as everywhere else in the app. */
+export function Illustration({ name, size = 96 }: { name: IllustrationName; size?: number }) {
+  const thing: Record<IllustrationName, ReactNode> = {
+    cup: <path d="M33 52h30l-3 30H36zM31 52h34M40 46c0-3 2-3 2-6M48 46c0-3 2-3 2-6M56 46c0-3 2-3 2-6" />,
+    receipt: <path d="M34 44h28v38l-4-3-4 3-4-3-4 3-4-3-4 3-4-3zM40 54h16M40 62h16M40 70h10" />,
+    star: <path d="M48 44l5 10 11 1.6-8 7.8 2 11-10-5.2-10 5.2 2-11-8-7.8 11-1.6z" />,
+    search: <path d="M44 66a12 12 0 1 0 0-24 12 12 0 0 0 0 24zM53 63l12 12" />,
+    bell: <path d="M38 70V58a10 10 0 0 1 20 0v12l4 4H34zM44 78a4 4 0 0 0 8 0" />,
+    offline: <path d="M30 56a26 26 0 0 1 36 0M37 63a16 16 0 0 1 22 0M44 70a6 6 0 0 1 8 0M32 46l34 34" />,
+    lost: <path d="M36 82V50l12-6 12 6v32M42 82V66h12v16M44 56h8" />,
+  }
+  return (
+    <svg
+      className="illustration"
+      width={size}
+      height={size}
+      viewBox="0 0 96 96"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth={2}
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden
+    >
+      {/* the lamp: pipe rail, shade, lit bulb */}
+      <path d="M20 8h56M48 8v12M38 30l10-10 10 10z" />
+      <circle className="illustration__bulb" cx="48" cy="34" r="4" />
+      {thing[name]}
+    </svg>
+  )
+}
+
+/** Empty / Default — a drawing, what's missing, why it matters, and the one thing to do next. */
+export function EmptyState({
+  illustration,
+  title,
+  children,
+  action,
+}: {
+  illustration: IllustrationName
+  title: string
+  children?: ReactNode
+  action?: ReactNode
+}) {
+  return (
+    <div className="empty">
+      <Illustration name={illustration} />
+      <h2 className="t-h2">{title}</h2>
+      {children && <p className="t-body muted">{children}</p>}
+      {action && <div className="empty__action">{action}</div>}
+    </div>
+  )
+}
+
+/** A small count on a nav icon or row (unread notifications, cart items). Hidden at 0. */
+export function CountBadge({ count, label, className = '' }: { count: number; label: string; className?: string }) {
+  if (count <= 0) return null
+  return (
+    <span className={`count-badge t-caption num ${className}`} aria-label={label}>
+      {count > 9 ? '9+' : count}
+    </span>
+  )
+}
+
+/** Settings-style list: an optional small heading over a white plate of rows. */
+export function ListGroup({ title, children }: { title?: string; children: ReactNode }) {
+  return (
+    <section className="list-group">
+      {title && <h2 className="t-caption list-group__title">{title}</h2>}
+      <div className="list-group__rows">{children}</div>
+    </section>
+  )
+}

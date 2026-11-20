@@ -48,22 +48,33 @@ type TextFieldProps = InputHTMLAttributes<HTMLInputElement> & {
 /** Field / Text — label, 56px input, optional helper or error row. */
 export function TextField({ label, helper, error, trailing, id, ...rest }: TextFieldProps) {
   const inputId = id ?? `f-${label.replace(/\W+/g, '-').toLowerCase()}`
+  const noteId = `${inputId}-note`
   return (
     <div className={`field ${error ? 'field--error' : ''}`}>
       <label htmlFor={inputId} className="t-body-sm">
         {label}
       </label>
       <div className="field__input">
-        <input id={inputId} className="t-body" aria-invalid={!!error} {...rest} />
+        <input
+          id={inputId}
+          className="t-body"
+          aria-invalid={!!error}
+          aria-describedby={error || helper ? noteId : undefined}
+          {...rest}
+        />
         {trailing}
       </div>
       {error ? (
-        <p className="field__error t-caption" role="alert">
+        <p id={noteId} className="field__error t-caption" role="alert">
           <Icon name="alert" size={16} />
           {error}
         </p>
       ) : (
-        helper && <p className="t-caption muted">{helper}</p>
+        helper && (
+          <p id={noteId} className="t-caption muted">
+            {helper}
+          </p>
+        )
       )}
     </div>
   )

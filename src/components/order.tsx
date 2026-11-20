@@ -414,20 +414,31 @@ export function PriceBreakdown({
 }
 
 /** Feedback / Alert */
+/** Feedback / Banner: the one inline message style (info, success, warning, danger). Offline and
+ *  Closed below are this banner with their own icon, title and action. */
 export function Alert({
   tone = 'info',
   children,
   action,
+  icon,
+  title,
+  className = '',
 }: {
   tone?: 'info' | 'success' | 'warning' | 'danger'
   children: ReactNode
   action?: ReactNode
+  icon?: IconName
+  title?: ReactNode
+  className?: string
 }) {
-  const icon: IconName = tone === 'success' ? 'check' : tone === 'info' ? 'info' : 'alert'
+  const glyph: IconName = icon ?? (tone === 'success' ? 'check' : tone === 'info' ? 'info' : 'alert')
   return (
-    <div className={`alert alert--${tone}`} role="status">
-      <Icon name={icon} size={20} />
-      <span className="t-body-sm alert__text">{children}</span>
+    <div className={`alert alert--${tone} ${className}`} role={tone === 'danger' ? 'alert' : 'status'}>
+      <Icon name={glyph} size={20} />
+      <span className="alert__text">
+        {title && <span className="t-button alert__title">{title}</span>}
+        <span className="t-body-sm">{children}</span>
+      </span>
       {action}
     </div>
   )
@@ -436,29 +447,33 @@ export function Alert({
 /** Feedback / Offline — one banner with Retry; what is saved on the phone stays visible under it */
 export function OfflineBanner({ children, onRetry }: { children?: ReactNode; onRetry: () => void }) {
   return (
-    <div className="alert alert--warning offline-banner" role="status">
-      <Icon name="offline" size={20} />
-      <span className="t-body-sm alert__text">{children ?? "You're offline. Showing what's saved on this phone."}</span>
-      <button className="t-body-sm link-text offline-banner__retry" onClick={onRetry}>
-        Retry
-      </button>
-    </div>
+    <Alert
+      tone="warning"
+      icon="offline"
+      className="offline-banner"
+      action={
+        <button className="t-body-sm link-text offline-banner__retry" onClick={onRetry}>
+          Retry
+        </button>
+      }
+    >
+      {children ?? "You're offline. Showing what's saved on this phone."}
+    </Alert>
   )
 }
 
 /** Feedback / Closed — the cafe isn't taking orders: today's hours and the next opening time */
 export function ClosedBanner({ why, today, next }: { why?: 'paused' | 'hours'; today: string; next?: string }) {
   return (
-    <div className="alert alert--warning closed-banner" role="status">
-      <Icon name="clock" size={20} />
-      <span className="alert__text closed-banner__text">
-        <span className="t-button">{why === 'paused' ? "We're not taking orders right now" : "We're closed right now"}</span>
-        <span className="t-body-sm">
-          {today}
-          {next ? ` · ${next}` : ''}. You can still browse and fill your cart.
-        </span>
-      </span>
-    </div>
+    <Alert
+      tone="warning"
+      icon="clock"
+      className="closed-banner"
+      title={why === 'paused' ? "We're not taking orders right now" : "We're closed right now"}
+    >
+      {today}
+      {next ? ` · ${next}` : ''}. You can still browse and fill your cart.
+    </Alert>
   )
 }
 
