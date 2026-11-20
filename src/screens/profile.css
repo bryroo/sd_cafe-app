@@ -48,25 +48,6 @@
 /* Read-only field (verified mobile number) */
 .field__input:has(.is-readonly) { background: var(--color-surface-alt); }
 
-/* Toast */
-.toast {
-  position: absolute;
-  left: 16px;
-  right: 16px;
-  top: 67px;
-  z-index: 10;
-  min-height: 48px;
-  display: flex;
-  align-items: center;
-  gap: var(--space-12);
-  padding: var(--space-12) var(--space-16);
-  background: var(--plate);
-  color: var(--on-dark);
-  border-left: 3px solid var(--gold);
-  border-radius: var(--radius-input);
-  box-shadow: var(--elevation-3);
-  animation: toast-in 0.2s ease-out;
-}
 @keyframes toast-in {
   from { transform: translateY(-8px); opacity: 0; }
 }
@@ -78,7 +59,8 @@
   flex-direction: column;
 }
 .toggle {
-  height: 56px;
+  min-height: 56px;
+  padding-block: var(--space-8);
   display: flex;
   align-items: center;
   gap: var(--space-12);
@@ -94,7 +76,6 @@
   min-width: 0;
   display: flex;
   flex-direction: column;
-  white-space: nowrap;
 }
 .toggle__track {
   width: 52px;
@@ -105,7 +86,7 @@
   display: flex;
   justify-content: flex-start;
   flex-shrink: 0;
-  transition: background 0.15s;
+  transition: background var(--dur-fast) var(--ease-out);
 }
 .toggle__track.is-on {
   background: var(--ink);

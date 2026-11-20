@@ -1,7 +1,7 @@
 // Flow 6 — Profile and settings (C-27 … C-31)
-import { useEffect, useState, type ReactNode } from 'react'
+import { useEffect, useRef, useState, type ReactNode } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
-import { BottomNav } from '../components/blocks'
+import { BottomNav, CountBadge, EmptyState } from '../components/blocks'
 import { AddressCard, Alert } from '../components/order'
 import { Content, Row, Screen, TopBar } from '../components/Screen'
 import { Button, Checkbox, LogoMark, TextField, Toggle } from '../components/ui'
@@ -24,6 +24,7 @@ const rowIcons: Record<string, IconName> = {
   'Install app': 'phone',
   Privacy: 'lock',
   'Delete account': 'trash',
+  'Reset demo data': 'refresh',
   'E-wallet': 'phone',
   'Pay at counter': 'store',
 }
@@ -40,17 +41,21 @@ function SettingsRow({
   onClick,
   danger,
   chevron = true,
+  badge,
 }: {
   label: string
   value?: string
   onClick?: () => void
   danger?: boolean
   chevron?: boolean
+  /** A count after the label (unread notifications) */
+  badge?: number
 }) {
   const content = (
     <>
       <Icon name={rowIcons[label] ?? 'card'} size={20} color={danger ? 'var(--negative)' : 'var(--muted)'} />
       <span className="t-body option-row__label">{label}</span>
+      {!!badge && <CountBadge count={badge} label={`${badge} unread`} />}
       {value && <span className="t-body-sm muted option-row__value">{value}</span>}
       {chevron && !danger && <Icon name="chevron" size={20} color="var(--muted)" />}
     </>
@@ -93,6 +98,8 @@ export function Profile() {
   const navigate = useNavigate()
   const overlay = useOverlay()
   const { name, session } = useApp()
+  const { notifications } = useShared()
+  const unread = notifications.filter((n) => !n.read).length
 
   if (session !== 'member') {
     return (
@@ -106,6 +113,12 @@ export function Profile() {
             Create account
           </Button>
         </div>
+        <Content>
+          <Group title="Help">
+            <SettingsRow label="Help and support" onClick={() => overlay.open('help')} />
+            <SettingsRow label="About MEGS' Cafe" onClick={() => overlay.open('about')} />
+          </Group>
+        </Content>
       </Screen>
     )
   }
@@ -130,34 +143,23 @@ export function Profile() {
           <SettingsRow label="Payment methods" onClick={() => navigate('/profile/payment')} />
           <SettingsRow label="Saved addresses" onClick={() => navigate('/profile/addresses')} />
         </Group>
-        <Group title="Activity">
-          <SettingsRow label="Order history" onClick={() => navigate('/orders?tab=history')} />
-          <SettingsRow label="Points activity" onClick={() => navigate('/rewards/activity')} />
-          <SettingsRow label="Regular status" onClick={() => navigate('/rewards/status')} />
+        {/* Orders, points and status live in their own tabs; Profile holds only what has no tab */}
+        <Group title="Inbox">
+          <SettingsRow label="Notifications" badge={unread} onClick={() => navigate('/notifications')} />
         </Group>
-        <Group title="Preferences">
-          <SettingsRow label="Notifications" onClick={() => navigate('/notifications')} />
+        <Group title="App">
           <SettingsRow label="Settings" onClick={() => navigate('/settings')} />
+          <SettingsRow label="Privacy" onClick={() => navigate('/settings/privacy')} />
         </Group>
-        <Group title="Support">
-          <SettingsRow label="Help and support" />
-          <SettingsRow label="About MEGS' Cafe" />
+        <Group title="Help">
+          <SettingsRow label="Help and support" onClick={() => overlay.open('help')} />
+          <SettingsRow label="About MEGS' Cafe" onClick={() => overlay.open('about')} />
         </Group>
         <Group>
           <SettingsRow label="Log out" danger onClick={() => overlay.open('logout')} />
         </Group>
       </Content>
     </Screen>
-  )
-}
-
-/** Toast — success banner over the top bar (C-28 Edit Profile / Saved). */
-function Toast({ children }: { children: ReactNode }) {
-  return (
-    <div className="toast" role="status">
-      <Icon name="check" size={20} />
-      <span className="t-body">{children}</span>
-    </div>
   )
 }
 
@@ -172,14 +174,14 @@ export function EditProfile() {
   const [size, setSize] = useState(defaultSize)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
-  const [cafe, setCafe] = useState("MEGS' Cafe")
-  const [saved, setSaved] = useState(params.get('state') === 'saved')
+  const [nameError, setNameError] = useState('')
+  const nameRef = useRef<HTMLInputElement>(null)
+  const overlay = useOverlay()
 
+  // `?state=saved` (screen index): show the saved confirmation
   useEffect(() => {
-    if (!saved || params.get('state') === 'saved') return
-    const t = setTimeout(() => setSaved(false), 2500)
-    return () => clearTimeout(t)
-  }, [saved, params])
+    if (params.get('state') === 'saved') overlay.toast('Profile saved')
+  }, [params, overlay])
 
   return (
     <Screen
@@ -187,9 +189,14 @@ export function EditProfile() {
       topBar={<TopBar title="Edit profile" />}
       footer={
         <Button
-          disabled={!draft.trim() || busy}
+          disabled={busy}
           aria-busy={busy}
           onClick={async () => {
+            if (!draft.trim()) {
+              setNameError('Enter your name.')
+              nameRef.current?.focus()
+              return
+            }
             // FR-PRF-02 / 3.2.10.5: a failed save keeps the edited values and says so
             setBusy(true)
             setError('')
@@ -200,7 +207,7 @@ export function EditProfile() {
                 birthday: birthday || null,
                 default_drink_size: size || null,
               })
-              setSaved(true)
+              overlay.toast('Profile saved')
             } catch (err) {
               setError(err instanceof Error ? err.message : "Couldn't save. Try again.")
             } finally {
@@ -211,7 +218,6 @@ export function EditProfile() {
           {busy ? 'Saving…' : 'Save'}
         </Button>
       }
-      overlay={saved && <Toast>Profile saved</Toast>}
     >
       <Content>
         {error && (
@@ -220,13 +226,24 @@ export function EditProfile() {
           </Row>
         )}
         <Row>
-          <TextField label="Name" value={draft} onChange={(e) => setDraft(e.target.value)} autoComplete="name" />
+          <TextField
+            ref={nameRef}
+            label="Name"
+            value={draft}
+            error={nameError}
+            onChange={(e) => {
+              setDraft(e.target.value)
+              setNameError('')
+            }}
+            onBlur={() => !draft.trim() && setNameError('Enter your name.')}
+            autoComplete="name"
+          />
         </Row>
         <Row>
           <TextField label="Mobile number" helper="Verified" value={phone} readOnly className="t-body is-readonly" />
         </Row>
         <Row>
-          <TextField label="Email" type="email" value={email} onChange={(e) => setEmail(e.target.value)} />
+          <TextField label="Email" type="email" value={email} onChange={(e) => setEmail(e.target.value)} autoComplete="email" />
         </Row>
         <Row>
           <TextField
@@ -259,9 +276,6 @@ export function EditProfile() {
             </div>
             <p className="t-caption muted">Picked for you on drinks that come in this size</p>
           </div>
-        </Row>
-        <Row>
-          <TextField label="Favorite cafe" value={cafe} onChange={(e) => setCafe(e.target.value)} />
         </Row>
       </Content>
     </Screen>
@@ -372,15 +386,10 @@ export function Settings() {
           <SettingsRow
             label="Reset demo data"
             value="Clears this device"
-            onClick={() => {
-              if (window.confirm('Reset the demo? The cart, orders, staff console and store settings on this device will be cleared.'))
-                resetDemo()
+            onClick={async () => {
+              if (await overlay.confirm('reset-demo')) resetDemo()
             }}
           />
-        </Group>
-        <Group>
-          <SettingsRow label="Delete account" danger onClick={() => overlay.open('delete-account')} />
-          <SettingsRow label="Log out" danger onClick={() => overlay.open('logout')} />
         </Group>
       </Content>
     </Screen>
@@ -433,6 +442,9 @@ export function Privacy() {
           </div>
         </Row>
         <Row>
+          <h2 className="t-h3">Your data</h2>
+        </Row>
+        <Row>
           <Button variant="secondary" onClick={download}>
             Download my data
           </Button>
@@ -474,9 +486,9 @@ export function Notifications() {
     <Screen topBar={<TopBar title="Notifications" />}>
       <Content>
         {sorted.length === 0 && (
-          <Row>
-            <p className="t-body muted">No notifications yet. Order updates and offers show up here.</p>
-          </Row>
+          <EmptyState illustration="bell" title="No notifications yet">
+            Order updates and offers show up here.
+          </EmptyState>
         )}
         {(['Today', 'Earlier'] as const).map((day) => {
           const items = sorted.filter((n) => isToday(n.at) === (day === 'Today'))

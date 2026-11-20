@@ -1,4 +1,4 @@
-import { useRef, useState, type ButtonHTMLAttributes, type InputHTMLAttributes, type ReactNode } from 'react'
+import { useRef, useState, type ButtonHTMLAttributes, type InputHTMLAttributes, type ReactNode, type Ref } from 'react'
 import logoArt from '../assets/brand/megs-logo.webp'
 import markArt from '../assets/brand/megs-mark.webp'
 import spinner from '../assets/figma/spinner.svg'
@@ -43,10 +43,12 @@ type TextFieldProps = InputHTMLAttributes<HTMLInputElement> & {
   /** Error message — shows the error state (red border + message) */
   error?: string
   trailing?: ReactNode
+  /** Lets a form focus its first invalid field */
+  ref?: Ref<HTMLInputElement>
 }
 
 /** Field / Text — label, 56px input, optional helper or error row. */
-export function TextField({ label, helper, error, trailing, id, ...rest }: TextFieldProps) {
+export function TextField({ label, helper, error, trailing, id, ref, ...rest }: TextFieldProps) {
   const inputId = id ?? `f-${label.replace(/\W+/g, '-').toLowerCase()}`
   const noteId = `${inputId}-note`
   return (
@@ -56,6 +58,7 @@ export function TextField({ label, helper, error, trailing, id, ...rest }: TextF
       </label>
       <div className="field__input">
         <input
+          ref={ref}
           id={inputId}
           className="t-body"
           aria-invalid={!!error}
