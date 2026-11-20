@@ -72,6 +72,8 @@ export const DRINK_SIZES = ['Cold · 16 oz', 'Cold · 22 oz', 'Hot · 12 oz']
 
 type AppState = {
   session: Session
+  /** Signed in as a customer. Guests (browse as guest, or signed out) can only browse: no cart, no orders. */
+  isMember: boolean
   setSession: (s: Session) => void
   /** Set after sign up so Home shows its "First launch" state once. */
   firstLaunch: boolean
@@ -290,8 +292,26 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
 
   const tier = shared.tiers.find((t) => t.id === customer?.tierId) ?? shared.tiers.find((t) => t.isDefault)
 
+  // Guests can't have a cart. A cart still on the device once the account check has finished (an
+  // older version's guest cart, or a member whose session ended) is set aside in savedCart, which
+  // comes back on the next log in, rather than deleted. Waiting for `ready` matters: before it, a
+  // signed-in member briefly looks like a guest.
+  useEffect(() => {
+    if (!shared.ready || member || cart.length === 0) return
+    setSavedCart((prev) => (prev.length ? prev : cart))
+    setCart([])
+  }, [shared.ready, member, cart, setCart, setSavedCart])
+  // ...and it comes back as soon as the account is signed in (whenever the customer record arrives)
+  useEffect(() => {
+    if (!member || savedCart.length === 0) return
+    setCart((prev) => (prev.length ? prev : savedCart))
+    setSavedCart([])
+  }, [member, savedCart, setCart, setSavedCart])
+
   const value = useMemo<AppState>(() => {
+    // Cart changes are for members only (guests browse); the screens never offer them to guests
     const addToCart: AppState['addToCart'] = (line) =>
+      member &&
       setCart((prev) => {
         const key = lineKey(line)
         const existing = prev.find((l) => l.key === key)
@@ -300,6 +320,7 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
       })
 
     const updateLine: AppState['updateLine'] = (oldKey, line) =>
+      member &&
       setCart((prev) => {
         const key = lineKey(line)
         const twin = key !== oldKey && prev.find((l) => l.key === key)
@@ -396,6 +417,7 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
 
     return {
       session,
+      isMember: member,
       setSession: changeSession,
       firstLaunch,
       setFirstLaunch,
@@ -410,6 +432,7 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
       addToCart,
       updateLine,
       setQty: (key, qty) =>
+        member &&
         setCart((prev) =>
           qty <= 0 ? prev.filter((l) => l.key !== key) : prev.map((l) => (l.key === key ? { ...l, qty } : l)),
         ),
