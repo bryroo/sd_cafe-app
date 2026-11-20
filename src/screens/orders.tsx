@@ -1,7 +1,7 @@
 // Flow 4 — Order tracking and history (C-17, C-18, C-19)
 import { useEffect, useRef, useState } from 'react'
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom'
-import { BottomNav, CardSkeleton, Tabs } from '../components/blocks'
+import { BottomNav, CardSkeleton, EmptyState, Tabs } from '../components/blocks'
 import {
   Alert,
   FulfillmentBadge,
@@ -379,20 +379,30 @@ export function Orders() {
               </Row>
             ))
           ) : (
-            <Row>
-              <div className="orders-empty">
-                <Icon name="receipt" size={36} color="var(--muted)" />
-                <span className="t-h3">No active orders</span>
-                <span className="t-body muted">Orders you place show up here until they're done.</span>
-                <Button full={false} onClick={() => navigate('/menu')}>
-                  Start an order
-                </Button>
-              </div>
-            </Row>
+            <EmptyState
+              illustration="receipt"
+              title="No active orders"
+              action={<Button onClick={() => navigate('/menu')}>Start an order</Button>}
+            >
+              Orders you place show up here, with live updates, until they're done.
+            </EmptyState>
           )
         ) : (
           // FR-ROR-01: newest first
           <>
+            {done.length === 0 && (
+              <EmptyState
+                illustration="receipt"
+                title="No past orders yet"
+                action={
+                  <Button variant="secondary" onClick={() => navigate('/menu')}>
+                    Browse the menu
+                  </Button>
+                }
+              >
+                Finished orders land here, so you can order them again in one tap.
+              </EmptyState>
+            )}
             {done.map((o) => (
               <Row key={o.number}>
                 <OrderCard
