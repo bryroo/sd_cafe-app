@@ -732,3 +732,11 @@
   transition: transform var(--dur-base) var(--ease-out);
 }
 .swipe-row__top.is-dragging { transition: none; }
+
+/* Very narrow phones (and 400% zoom): a smaller photo, and long names wrap instead of being cut mid-word */
+.mitem__name { overflow-wrap: anywhere; }
+@media (max-width: 359px) {
+  .mitem { padding: 0 var(--space-8); }
+  .mitem__open { grid-template-columns: 52px minmax(0, 1fr); gap: var(--space-8); }
+  .mitem__open .product-thumb { width: 52px; height: 52px; }
+}

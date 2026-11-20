@@ -213,3 +213,6 @@
   font-weight: 600;
   color: var(--ink);
 }
+
+/* Text buttons can be long sentences ("Add unit, landmark or delivery notes"): wrap, don't overflow */
+.btn--text { white-space: normal; text-align: left; }

@@ -233,3 +233,9 @@
   border-radius: var(--radius-pill);
 }
 .get-started__step.is-done .get-started__tick { background: var(--gold); border-color: var(--gold); color: var(--on-gold); }
+
+/* Very narrow phones: a slimmer section rail leaves the item names room */
+@media (max-width: 359px) {
+  .menu-rail { width: 84px; }
+  .menu-rail__label { white-space: normal; overflow-wrap: anywhere; }
+}
