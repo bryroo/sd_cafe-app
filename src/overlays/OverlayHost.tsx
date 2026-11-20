@@ -12,6 +12,7 @@ import { checkPromo, featuredPromotion, freeItemsLine, rewardById, rewardSavings
 import { COUNTER, quickAddLine, tierDiscount, useApp } from '../state/AppState'
 import { DAYS, deleteCustomerData, hourLabel, useShared } from '../state/shared'
 import { signalCartAdded } from '../state/feedback'
+import { withNext } from '../state/guest'
 import { CONTACT } from '../data/contact'
 import './overlays.css'
 
@@ -255,12 +256,16 @@ function OverlayContent({
     /* O-03 Log in to place your order */
     case 'login-to-order':
       return (
-        <Sheet title="Log in to place your order" onClose={close}>
-          <p className="t-body muted">Your cart is saved. Log in or sign up and you will come right back to it.</p>
+        // Guests browse only: ordering (and anything account-related) needs an account. After logging
+        // in or signing up they come back to `next`, the screen they were on.
+        <Sheet title={String(data.title ?? 'Log in to order')} onClose={close}>
+          <p className="t-body muted">
+            {String(data.body ?? "Ordering needs an account. Log in or create one, and you'll come right back here.")}
+          </p>
           <Button
             onClick={() => {
               close()
-              navigate('/log-in')
+              navigate(withNext('/log-in', data.next ? String(data.next) : undefined))
             }}
           >
             Log in
@@ -269,10 +274,10 @@ function OverlayContent({
             variant="secondary"
             onClick={() => {
               close()
-              navigate('/sign-up')
+              navigate(withNext('/sign-up', data.next ? String(data.next) : undefined))
             }}
           >
-            Sign up
+            Create account
           </Button>
         </Sheet>
       )

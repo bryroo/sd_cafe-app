@@ -1,5 +1,6 @@
 import type { ReactNode } from 'react'
 import { Navigate } from 'react-router-dom'
+import { MemberOnly } from './components/guest'
 import type { useApp } from './state/AppState'
 import {
   ForgotPassword,
@@ -96,32 +97,32 @@ export const routes: RouteDef[] = [
   { path: '/product/:id', element: <ProductDetail /> },
   // Flow 3
   // Cart and checkout are one review screen; both addresses keep working
-  { path: '/cart', element: <Checkout /> },
-  { path: '/fulfillment', element: <PickupOrDelivery /> },
-  { path: '/address/:id', element: <DeliveryAddress /> },
-  { path: '/checkout', element: <Checkout /> },
-  { path: '/order-confirmation', element: <OrderConfirmation /> },
+  { path: '/cart', element: <MemberOnly title="Your order" reason="Log in to start an order." illustration="cup"><Checkout /></MemberOnly> },
+  { path: '/fulfillment', element: <MemberOnly title="Pickup or delivery" reason="Log in to start an order." illustration="cup"><PickupOrDelivery /></MemberOnly> },
+  { path: '/address/:id', element: <MemberOnly title="Delivery address" reason="Log in to save delivery addresses." illustration="lost"><DeliveryAddress /></MemberOnly> },
+  { path: '/checkout', element: <MemberOnly title="Your order" reason="Log in to start an order." illustration="cup"><Checkout /></MemberOnly> },
+  { path: '/order-confirmation', element: <MemberOnly title="Order" reason="Log in to see your orders." illustration="receipt"><OrderConfirmation /></MemberOnly> },
   // Flow 4
-  { path: '/orders/tracking', element: <OrderTracking /> },
-  { path: '/orders', element: <Orders /> },
-  { path: '/orders/:number', element: <OrderDetail /> },
+  { path: '/orders/tracking', element: <MemberOnly title="Order" reason="Log in to follow your orders." illustration="receipt"><OrderTracking /></MemberOnly> },
+  { path: '/orders', element: <MemberOnly title="Orders" reason="Log in to see your orders." illustration="receipt" tab="orders"><Orders /></MemberOnly> },
+  { path: '/orders/:number', element: <MemberOnly title="Order" reason="Log in to see your orders." illustration="receipt"><OrderDetail /></MemberOnly> },
   // Flow 5
   { path: '/rewards', element: <Rewards /> },
   { path: '/rewards/catalog', element: <RewardCatalog /> },
-  { path: '/rewards/activity', element: <PointsActivity /> },
-  { path: '/rewards/status', element: <RegularStatus /> },
+  { path: '/rewards/activity', element: <MemberOnly title="Points activity" reason="Log in to see your points." illustration="star"><PointsActivity /></MemberOnly> },
+  { path: '/rewards/status', element: <MemberOnly title="Regular status" reason="Log in to see your status and discount." illustration="star"><RegularStatus /></MemberOnly> },
   { path: '/rewards/:id', element: <RewardDetail /> },
   { path: '/promotions', element: <Promotions /> },
   { path: '/promotions/:id', element: <PromotionDetail /> },
   // Flow 6
   { path: '/profile', element: <Profile /> },
-  { path: '/profile/edit', element: <EditProfile /> },
-  { path: '/profile/payment', element: <PaymentMethods /> },
-  { path: '/profile/payment/add', element: <AddPaymentMethod /> },
-  { path: '/profile/addresses', element: <SavedAddresses /> },
-  { path: '/settings', element: <Settings /> },
+  { path: '/profile/edit', element: <MemberOnly title="Edit profile" reason="Log in to edit your profile." illustration="lost"><EditProfile /></MemberOnly> },
+  { path: '/profile/payment', element: <MemberOnly title="Payment methods" reason="Log in to manage how you pay." illustration="lost"><PaymentMethods /></MemberOnly> },
+  { path: '/profile/payment/add', element: <MemberOnly title="Add payment method" reason="Log in to manage how you pay." illustration="lost"><AddPaymentMethod /></MemberOnly> },
+  { path: '/profile/addresses', element: <MemberOnly title="Saved addresses" reason="Log in to manage your addresses." illustration="lost"><SavedAddresses /></MemberOnly> },
+  { path: '/settings', element: <MemberOnly title="Settings" reason="Log in to change your notification settings." illustration="bell"><Settings /></MemberOnly> },
   { path: '/settings/privacy', element: <Privacy /> },
-  { path: '/notifications', element: <Notifications /> },
+  { path: '/notifications', element: <MemberOnly title="Notifications" reason="Log in to get order updates and offers." illustration="bell"><Notifications /></MemberOnly> },
 ]
 
 export const index: IndexGroup[] = [
