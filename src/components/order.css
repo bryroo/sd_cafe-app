@@ -304,8 +304,8 @@ button.option-row:hover .option-row__label { text-decoration: underline; text-un
 .status-badge--L { height: 30px; padding: 0 12px; }
 .status-badge--M { height: 24px; padding: 0 8px; }
 .status-badge--muted { background: var(--active); color: var(--ink); }
-.status-badge--accent { background: var(--gold); color: var(--ink); }
-.status-badge--success { background: var(--gold); color: var(--ink); }
+.status-badge--accent { background: var(--gold); color: var(--on-gold); }
+.status-badge--success { background: var(--gold); color: var(--on-gold); }
 .status-badge--dark { background: var(--ink); color: var(--on-ink); }
 .status-badge--error { background: var(--pill-negative-bg); color: var(--pill-negative-ink); }
 

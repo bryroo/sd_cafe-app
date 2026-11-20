@@ -108,7 +108,7 @@
   justify-content: center;
   flex-shrink: 0;
 }
-.activity-row__disc.is-earned { background: var(--gold); }
+.activity-row__disc.is-earned { background: var(--gold); color: var(--on-gold); }
 .activity-row__text {
   flex: 1 0 0;
   min-width: 0;
