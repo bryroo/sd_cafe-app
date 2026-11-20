@@ -39,12 +39,25 @@
       <link href="https://fonts.googleapis.com/css2?family=Archivo:wdth,wght@62..125,400..800&display=swap" rel="stylesheet" />
     </noscript>
     <title>MEGS' Cafe</title>
+    <!-- Settings → Appearance: a forced light or dark theme applies before anything paints -->
+    <script>
+      try {
+        var t = localStorage.getItem('megs.theme')
+        if (t === 'light' || t === 'dark') {
+          document.documentElement.setAttribute('data-theme', t)
+          document.querySelectorAll('meta[name="theme-color"]').forEach(function (m) {
+            m.setAttribute('content', t === 'dark' ? '#121212' : '#ebebe8')
+          })
+        }
+      } catch (e) {}
+    </script>
     <!-- App shell painted before the JavaScript arrives; React replaces it -->
     <style>
       .boot { min-height: 100dvh; display: flex; align-items: center; justify-content: center; gap: 12px;
         background: #ebebe8; color: #141414; font: 700 20px/1 system-ui, -apple-system, 'Segoe UI', sans-serif; }
       .boot img { border-radius: 50%; }
-      @media (prefers-color-scheme: dark) { .boot { background: #121212; color: #f2f2ef; } }
+      @media (prefers-color-scheme: dark) { :root:not([data-theme='light']) .boot { background: #121212; color: #f2f2ef; } }
+      :root[data-theme='dark'] .boot { background: #121212; color: #f2f2ef; }
     </style>
   </head>
   <body>

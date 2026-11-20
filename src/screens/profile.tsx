@@ -1,7 +1,7 @@
 // Flow 6 — Profile and settings (C-27 … C-31)
 import { useEffect, useRef, useState, type ReactNode } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
-import { BottomNav, CountBadge, EmptyState } from '../components/blocks'
+import { BottomNav, CountBadge, EmptyState, Radio } from '../components/blocks'
 import { AddressCard, Alert } from '../components/order'
 import { Content, Row, Screen, TopBar } from '../components/Screen'
 import { Button, Checkbox, LogoMark, TextField, Toggle } from '../components/ui'
@@ -33,6 +33,7 @@ import { DRINK_SIZES, resetDemo, useApp } from '../state/AppState'
 import { customerDataExport, markNoteRead, saveProfile, useShared, type CustomerNote } from '../state/shared'
 import { isIos, promptInstall, usePwa } from '../state/pwa'
 import { useValidation } from '../state/forms'
+import { useTheme, type ThemePref } from '../state/theme'
 import './profile.css'
 
 /** Row / Settings — icon, label, optional value, chevron. Renders as a button only when it does something. */
@@ -293,6 +294,7 @@ export function Settings() {
   const { notificationsOn, setNotificationsOn, promoConsent, setPromoConsent, remindersOn, setRemindersOn } = useApp()
   const denied = permission() === 'denied'
   const [howTo, setHowTo] = useState(false)
+  const [theme, setTheme] = useTheme()
   // Install to the home screen: the browser's dialog where there is one, Safari's steps on iPhone
   const pwa = usePwa()
   const [iosSteps, setIosSteps] = useState(false)
@@ -368,6 +370,24 @@ export function Settings() {
               onChange={setRemindersOn}
               disabled={denied}
             />
+          </div>
+        </Row>
+        <Row>
+          <p className="t-caption muted" id="appearance-title">
+            Appearance
+          </p>
+        </Row>
+        <Row>
+          <div className="card appearance-card" role="radiogroup" aria-labelledby="appearance-title">
+            {(
+              [
+                ['system', 'Same as this device'],
+                ['light', 'Light'],
+                ['dark', 'Dark'],
+              ] as [ThemePref, string][]
+            ).map(([id, label]) => (
+              <Radio key={id} name="appearance" label={label} checked={theme === id} onChange={() => setTheme(id)} />
+            ))}
           </div>
         </Row>
         <Group title="General">
