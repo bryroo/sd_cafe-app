@@ -355,6 +355,18 @@ const mmss = (ms: number) => {
   return `${Math.floor(t / 60)}:${String(t % 60).padStart(2, '0')}`
 }
 
+/** The mobile number or email last used to log in on this device, so coming back is one field.
+ *  Only the identifier is kept, never the password; deleting the account clears it (megs.*). */
+const LAST_LOGIN = 'megs.last-login'
+const DEMO_ID = '0917 123 4567'
+const lastLogin = () => {
+  try {
+    return window.localStorage.getItem(LAST_LOGIN) ?? ''
+  } catch {
+    return ''
+  }
+}
+
 /** C-06 Log In — FR-ACC-07: 5 wrong passwords lock sign-in for 15 minutes, with a live countdown */
 export function LogIn() {
   const navigate = useNavigate()
@@ -362,8 +374,9 @@ export function LogIn() {
   const { setSession } = useApp()
   const online = useOnline()
   // The demo account (demo-reset seed); the lockout is kept by the database (FR-ACC-07)
-  const [id, setId] = useState(params.get('id') ?? '0917 123 4567')
-  const [password, setPassword] = useState(params.get('id') ? '' : 'password1')
+  const [id, setId] = useState(() => params.get('id') ?? (lastLogin() || DEMO_ID))
+  // The demo password is filled in only for the demo account
+  const [password, setPassword] = useState(() => (!params.get('id') && (lastLogin() || DEMO_ID) === DEMO_ID ? 'password1' : ''))
   const [error, setError] = useState('')
   const [busy, setBusy] = useState(false)
   const [lockedUntil, setLockedUntil] = useState(0)
@@ -389,6 +402,11 @@ export function LogIn() {
     const r = await customerLogin(id, password)
     setBusy(false)
     if (r.ok) {
+      try {
+        window.localStorage.setItem(LAST_LOGIN, id.trim())
+      } catch {
+        /* storage blocked: the field is just empty next time */
+      }
       setSession('member')
       navigate('/home', { replace: true })
       return
