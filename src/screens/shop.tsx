@@ -49,7 +49,7 @@ import {
 import { useOverlay } from '../overlays/OverlayHost'
 import { featuredPromotion, nextReward } from '../data/rewards'
 import { useApp } from '../state/AppState'
-import { useUnreadCount } from '../state/feedback'
+import { signalCartAdded, useUnreadCount } from '../state/feedback'
 import { summarize, useReorder } from './orders'
 import { retryConnection, useOnline } from '../state/online'
 import { etaLine, stepLabel, useShared } from '../state/shared'
@@ -613,7 +613,8 @@ function ProductPage({ id }: { id: string }) {
   const [note, setNote] = useState(editing?.note ?? '')
   const [qty, setQty] = useState(editing?.qty ?? 1)
   const [adding, setAdding] = useState(false)
-  const [favorite, setFavorite] = useState(false)
+  const [noteOpen, setNoteOpen] = useState(!!editing?.note)
+  const overlay = useOverlay()
 
   if (!product) {
     return (
@@ -650,10 +651,16 @@ function ProductPage({ id }: { id: string }) {
         ...(editing?.options.filter((o) => !known.has(o)) ?? []),
       ]
       const line = { productId: product.id, options, note: note.trim(), unitPrice: unit, qty }
-      if (editing) updateLine(editing.key, line)
-      else addToCart(line)
+      if (editing) {
+        updateLine(editing.key, line)
+        overlay.toast(`Updated ${product.name}`)
+      } else {
+        addToCart(line)
+        signalCartAdded()
+        overlay.toast(`Added ${product.name}`, { label: 'View cart', onClick: () => navigate('/cart') })
+      }
       navigate(-1)
-    }, 450)
+    }, 300)
   }
 
   return (
@@ -680,13 +687,6 @@ function ProductPage({ id }: { id: string }) {
           <div className="pdp__photo">
             <ProductThumb product={product} size="L" />
             <HeroControl label="Back" icon="back" onClick={() => navigate(-1)} style={{ left: 6, top: 6 }} />
-            <HeroControl
-              label={favorite ? 'Remove from favourites' : 'Add to favourites'}
-              icon="heart"
-              pressed={favorite}
-              onClick={() => setFavorite((f) => !f)}
-              style={{ right: 6, top: 6 }}
-            />
           </div>
         </Row>
         <Row>
@@ -745,13 +745,21 @@ function ProductPage({ id }: { id: string }) {
         ))}
 
         <Row>
-          <TextArea
-            label="Special instructions"
-            placeholder="Add a note (140 characters)"
-            helper="Optional · up to 140 characters"
-            value={note}
-            onChange={setNote}
-          />
+          {noteOpen ? (
+            <TextArea
+              label="Special instructions"
+              placeholder="e.g. less ice"
+              helper="Optional · up to 140 characters"
+              value={note}
+              onChange={setNote}
+            />
+          ) : (
+            <div>
+              <Button variant="text" height={48} full={false} icon={<Icon name="note" size={20} />} onClick={() => setNoteOpen(true)}>
+                Add a note
+              </Button>
+            </div>
+          )}
         </Row>
       </div>
     </Screen>
