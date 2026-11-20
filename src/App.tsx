@@ -174,8 +174,14 @@ function useRouteFocus() {
 }
 
 /** The customer app: bottom tabs on phones, a rail on tablets, a sidebar on desktops */
+/** Screens before anyone has chosen how to come in (log in, sign up, browse as guest) have no app
+ *  navigation: the choice on the screen is the only way forward */
+const NO_NAV = ['/', '/welcome']
+
 function AppLayout() {
   const overlay = useOverlay()
+  const { pathname } = useLocation()
+  const showNav = !NO_NAV.includes(pathname)
   // Alt+1…5 for the tabs, "/" for search, "?" for the list of shortcuts
   useShortcuts(SECTIONS, '/search', useCallback(() => overlay.open('shortcuts'), [overlay]))
   useRouteFocus()
@@ -187,7 +193,7 @@ function AppLayout() {
       }}>
         Skip to content
       </a>
-      <AppNav />
+      {showNav && <AppNav />}
       {/* Overlays (sheets, dialogs, toasts) render into #phone and stay inside this column */}
       <main id="main" className="app__main" tabIndex={-1}>
         <div id="phone" className="app__screen">

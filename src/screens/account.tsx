@@ -18,6 +18,7 @@ import { Icon } from '../components/Icon'
 import { toIntl, useApp } from '../state/AppState'
 import { useOverlay } from '../overlays/OverlayHost'
 import { retryConnection, useOnline } from '../state/online'
+import { isIos, promptInstall, usePwa } from '../state/pwa'
 import { customerLogin, customerSignUp, isMobileRegistered, useShared } from '../state/shared'
 import interiorPhoto from '../assets/photos/interior-banquette.webp'
 import './account.css'
@@ -55,6 +56,11 @@ export function Welcome() {
   const [params, setParams] = useSearchParams()
   const overlay = useOverlay()
   const { setSession } = useApp()
+  // Install to the home screen: the browser's dialog where there is one, Safari's steps on iPhone
+  const pwa = usePwa()
+  const ios = isIos()
+  const [iosSteps, setIosSteps] = useState(false)
+  const canOffer = !pwa.installed && (pwa.canInstall || ios)
 
   // FR-ACC-11: a deleted account lands here with a short confirmation
   useEffect(() => {
@@ -99,6 +105,29 @@ export function Welcome() {
         </h1>
         <p className="t-h3 welcome__tagline">The best time is coffee time.</p>
         <p className="t-body muted">Order ahead for pickup at the counter, or have it delivered.</p>
+        {canOffer && (
+          <div className="welcome__install">
+            <Button
+              variant="secondary"
+              height={48}
+              full={false}
+              icon={<Icon name="phone" size={20} />}
+              aria-expanded={ios ? iosSteps : undefined}
+              onClick={async () => {
+                if (ios) return setIosSteps((v) => !v)
+                if ((await promptInstall()) === 'accepted') overlay.toast("MEGS' Cafe is on your home screen")
+              }}
+            >
+              Install the app
+            </Button>
+            {ios && iosSteps && (
+              <p className="t-body-sm muted" role="status" ref={(el) => el?.scrollIntoView({ block: 'nearest' })}>
+                In Safari, tap <strong>Share</strong>, then <strong>Add to Home Screen</strong>. It opens full screen and
+                works offline.
+              </p>
+            )}
+          </div>
+        )}
       </div>
     </Screen>
   )

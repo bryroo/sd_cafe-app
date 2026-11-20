@@ -50,3 +50,15 @@
   flex-direction: column;
   gap: var(--space-4);
 }
+
+/* Welcome: Install the app, under the introduction */
+.welcome__install { margin-top: var(--space-16); display: flex; flex-direction: column; align-items: flex-start; gap: var(--space-8); }
+/* Tablets and desktops (no app navigation on Welcome): the introduction sits in the same centred
+   column as the buttons below it */
+@media (min-width: 768px) {
+  .app__screen .welcome__content {
+    width: 100%;
+    max-width: var(--column, 720px);
+    margin-inline: auto;
+  }
+}
