@@ -53,11 +53,14 @@ import { retryConnection, useOnline } from '../state/online'
 import { etaLine, stepLabel, useShared } from '../state/shared'
 import './shop.css'
 
-/** Shared handler for product rows: the whole row opens the product page, where options are chosen. */
+/** Shared handlers for product rows: the row opens the product page (all options); the "+" opens
+ *  Quick add with the item's standard options, so a usual order takes one more tap. */
 function useProductActions() {
   const navigate = useNavigate()
+  const overlay = useOverlay()
   const open = (id: string) => navigate(`/product/${id}`)
-  return { open }
+  const add = (id: string) => overlay.open('quick-add', { productId: id })
+  return { open, add }
 }
 
 /** Cart bar wired to app state. */
@@ -92,7 +95,7 @@ export function Home() {
   const { session, name, firstLaunch, activeOrders, promoDismissed, setPromoDismissed, addToCart, points, open: shop } = useApp()
   const online = useOnline()
   const activeOrder = activeOrders[0]
-  const { open } = useProductActions()
+  const { open, add } = useProductActions()
   const overlay = useOverlay()
   const forcedLoading = params.get('state') === 'loading'
   // Skeletons only until the account's data is in (once per visit); `?state=loading` keeps them for demos
@@ -124,7 +127,13 @@ export function Home() {
             : productsIn(section)
                 .slice(0, limit)
                 .map((p) => (
-                  <ProductRow key={p.id} product={p} onOpen={() => open(p.id)} hideBadge={sectionById(section)!.badge} />
+                  <ProductRow
+                    key={p.id}
+                    product={p}
+                    onOpen={() => open(p.id)}
+                    onAdd={() => add(p.id)}
+                    hideBadge={sectionById(section)!.badge}
+                  />
                 ))}
         </MenuBoard>
       </Row>
@@ -274,7 +283,7 @@ let lastScroll = 0
 export function Menu() {
   const navigate = useNavigate()
   const [params] = useSearchParams()
-  const { open } = useProductActions()
+  const { open, add } = useProductActions()
   const { fulfillment, addresses, addressId, open: shop, cartCount } = useApp()
   const online = useOnline()
   const address = addresses.find((a) => a.id === addressId)
@@ -378,7 +387,7 @@ export function Menu() {
                 {s.title}
               </h2>
               {productsIn(s.id).map((p) => (
-                <ProductRow key={p.id} product={p} onOpen={() => open(p.id)} hideBadge={s.badge} />
+                <ProductRow key={p.id} product={p} onOpen={() => open(p.id)} onAdd={() => add(p.id)} hideBadge={s.badge} />
               ))}
             </section>
           ))}
@@ -394,7 +403,7 @@ export function Menu() {
 export function SectionList() {
   const { id = 'best-sellers' } = useParams()
   const section = sectionById(id) ?? sections[0]
-  const { open } = useProductActions()
+  const { open, add } = useProductActions()
   const [filter, setFilter] = useState<'All' | 'Hot' | 'Iced'>('All')
 
   const all = productsIn(section.id)
@@ -418,7 +427,7 @@ export function SectionList() {
           <Row>
             <MenuBoard>
               {items.map((p) => (
-                <ProductRow key={p.id} product={p} onOpen={() => open(p.id)} />
+                <ProductRow key={p.id} product={p} onOpen={() => open(p.id)} onAdd={() => add(p.id)} />
               ))}
             </MenuBoard>
           </Row>
@@ -436,7 +445,7 @@ export function SectionList() {
 /** C-12 Search — idle shows recent searches + popular items; typing filters the menu. */
 export function Search() {
   const navigate = useNavigate()
-  const { open } = useProductActions()
+  const { open, add } = useProductActions()
   const { recentSearches, setRecentSearches } = useApp()
   const [q, setQ] = useState('')
   const query = q.trim().toLowerCase()
@@ -514,7 +523,7 @@ export function Search() {
                 {productsIn('best-sellers')
                   .slice(0, 3)
                   .map((p) => (
-                    <ProductRow key={p.id} product={p} onOpen={() => open(p.id)} />
+                    <ProductRow key={p.id} product={p} onOpen={() => open(p.id)} onAdd={() => add(p.id)} />
                   ))}
               </MenuBoard>
             </Row>
@@ -536,7 +545,10 @@ export function Search() {
                       remember()
                       open(p.id)
                     }}
-                   
+                    onAdd={() => {
+                      remember()
+                      add(p.id)
+                    }}
                   />
                 ))}
               </MenuBoard>

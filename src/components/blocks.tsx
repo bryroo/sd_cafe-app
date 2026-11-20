@@ -306,6 +306,8 @@ export function ReorderCard({
 type ProductCardProps = {
   product: Product
   onOpen: () => void
+  /** The "+" button: Quick add with the item's standard options. Falls back to opening the item. */
+  onAdd?: () => void
   /** Leave out a badge the list already says (no "Best Seller" tag inside Best Sellers) */
   hideBadge?: string
 }
@@ -326,7 +328,7 @@ export function ProductThumb({ product, size = 'M' }: { product: Product; size?:
   )
 }
 
-export function ProductRow({ product: p, onOpen, hideBadge }: ProductCardProps) {
+export function ProductRow({ product: p, onOpen, onAdd, hideBadge }: ProductCardProps) {
   const badge = p.badges.find((b) => b !== hideBadge)
   const soldOut = !p.available
   return (
@@ -346,8 +348,9 @@ export function ProductRow({ product: p, onOpen, hideBadge }: ProductCardProps) 
       </button>
       <button
         className="mitem__add"
-        aria-label={soldOut ? `${p.name} is sold out` : `Choose options for ${p.name}`}
-        onClick={onOpen}
+        aria-label={soldOut ? `${p.name} is sold out` : `Quick add ${p.name}`}
+        title={soldOut ? undefined : 'Quick add'}
+        onClick={onAdd ?? onOpen}
         disabled={soldOut}
       >
         <Icon name="plus" size={18} />
