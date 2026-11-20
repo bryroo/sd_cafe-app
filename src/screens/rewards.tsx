@@ -1,7 +1,7 @@
 // Flow 5 — Rewards and promotions (C-20 … C-26)
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom'
-import { BottomNav, Chip, Rail, SectionHeader, Tabs } from '../components/blocks'
+import { BottomNav, Chip, EmptyState, Rail, SectionHeader, Tabs } from '../components/blocks'
 import { Alert, OptionRow } from '../components/order'
 import { Content, Row, Screen, TopBar } from '../components/Screen'
 import { Button, RuleCheck } from '../components/ui'
@@ -19,6 +19,7 @@ import {
 import { useOverlay } from '../overlays/OverlayHost'
 import { useApp } from '../state/AppState'
 import { useShared } from '../state/shared'
+import { setFirstRun } from '../state/firstRun'
 import './rewards.css'
 
 const fmt = (n: number) => n.toLocaleString('en-PH')
@@ -127,6 +128,8 @@ function useRewardState() {
 export function Rewards() {
   const navigate = useNavigate()
   const { points, myRewards } = useApp()
+  // Ticks "See your points" on Home's Get started card
+  useEffect(() => setFirstRun({ seenRewards: true }), [])
   const { ready } = useShared()
   const recent = useActivity()
   const stateOf = useRewardState()
@@ -256,9 +259,17 @@ export function RewardCatalog() {
           </div>
         </Row>
         {tab === 'mine' && myRewards.length === 0 && (
-          <Row>
-            <p className="t-body muted">Rewards you redeem show up here.</p>
-          </Row>
+          <EmptyState
+            illustration="star"
+            title="No vouchers yet"
+            action={
+              <Button variant="secondary" onClick={() => setParams({}, { replace: true })}>
+                See rewards
+              </Button>
+            }
+          >
+            Redeem points for a free drink or snack. Your vouchers wait here until you use them.
+          </EmptyState>
         )}
       </Content>
     </Screen>
@@ -271,7 +282,7 @@ export function RewardDetail() {
   const [params] = useSearchParams()
   const navigate = useNavigate()
   const overlay = useOverlay()
-  const { points, redeemReward, myRewards } = useApp()
+  const { points, redeemReward, myRewards, setAppliedReward } = useApp()
   const reward = rewardById(id)
   const [justRedeemed, setJustRedeemed] = useState(params.get('state') === 'redeemed')
   const [busy, setBusy] = useState(false)
@@ -314,7 +325,16 @@ export function RewardDetail() {
       topBar={<TopBar title="Reward" />}
       footer={
         state === 'redeemed' ? (
-          <Button onClick={() => navigate('/menu')}>Use it on your next order</Button>
+          <Button
+            onClick={() => {
+              // The voucher goes on the next order straight away (the server checks it again when ordering)
+              setAppliedReward(reward.id)
+              overlay.toast(`${reward.name} will be applied to your order`)
+              navigate('/menu')
+            }}
+          >
+            Use it on your next order
+          </Button>
         ) : (
           <Button disabled={state !== 'default' || busy} onClick={redeem} aria-busy={busy}>
             Redeem · {fmt(reward.cost)} pts
@@ -345,7 +365,7 @@ export function RewardDetail() {
         {state === 'redeemed' && (
           <>
             <Row>
-              <Alert tone="success">Added to your rewards</Alert>
+              <Alert tone="success">Your voucher is ready. It's applied to your next order when you tap below.</Alert>
             </Row>
             <Row>
               <p className="t-body-sm muted">Balance: {fmt(points)} pts</p>
@@ -487,7 +507,7 @@ export function Promotions() {
     <Screen
       topBar={
         <>
-          <TopBar title="Promotions" />
+          <TopBar title="Offers" />
           <div className="tabs--full">
             <Tabs
               items={[
