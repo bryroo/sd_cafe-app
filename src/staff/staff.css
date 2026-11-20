@@ -779,6 +779,12 @@ button.st-alert:hover { background: var(--raised); }
   .st-row__age { grid-column: 2; grid-row: auto; }
   .st-row__status { grid-column: 3; grid-row: 1; }
   .st-row__accept { grid-column: 3; grid-row: 2 / span 2; align-self: end; }
+  /* Message templates and item availability are not order rows: keep their own columns.
+     Templates stack the switch under the text, so the message preview gets the full width. */
+  .st-tpl { grid-template-columns: minmax(0, 1fr); }
+  .st-avail { grid-template-columns: minmax(0, 1fr) auto; }
+  .st-tpl > *,
+  .st-avail > * { grid-column: auto; grid-row: auto; }
 }
 
 /* Under 768px: the bottom bar replaces the rail; inline Accept is a tablet affordance */

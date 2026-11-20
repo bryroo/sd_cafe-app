@@ -178,7 +178,9 @@ export function StaffApp() {
   const newCount = shared.orders.filter((o) => o.status === 'Received').length
   const failCount = shared.automations.filter((a) => a.state === 'failed' && !a.handled).length
   const badges: Record<string, number> = { '/staff/orders': newCount, '/staff/automations': failCount }
-  const current = [...DESTS].sort((a, b) => b.match.length - a.match.length).find((d) => path.startsWith(d.match))
+  // Item availability is opened from Store settings, so Settings stays lit there
+  const navPath = path.startsWith('/staff/availability') ? '/staff/settings' : path
+  const current = [...DESTS].sort((a, b) => b.match.length - a.match.length).find((d) => navPath.startsWith(d.match))
   const open = openState(shared.store, now)
 
   const nav = (cls: string) => (
