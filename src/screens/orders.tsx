@@ -18,7 +18,7 @@ import {
 import { Content, Row, Screen, TopBar, TopBarAction } from '../components/Screen'
 import { Button } from '../components/ui'
 import { Icon } from '../components/Icon'
-import { isUnavailable, peso, priceFor } from '../data/menu'
+import { peso } from '../data/menu'
 import { useOverlay } from '../overlays/OverlayHost'
 import { useApp, type CartLine } from '../state/AppState'
 import { useOnline, retryConnection } from '../state/online'
@@ -35,6 +35,7 @@ import {
   type OrderStatus,
   useShared,
 } from '../state/shared'
+import { useReorder } from '../state/reorder'
 import './orders.css'
 
 type Tone = 'muted' | 'accent' | 'success' | 'dark' | 'error'
@@ -304,26 +305,6 @@ export const refundNote = (o: Pick<Order, 'paymentStatus' | 'payment'>) =>
     : 'You were not charged.'
 
 /** Adds a past order's lines to the cart; asks first (O-08) if some items are off the menu today. */
-export function useReorder() {
-  const navigate = useNavigate()
-  const overlay = useOverlay()
-  const { addToCart } = useApp()
-  return async (lines: CartLine[]) => {
-    const gone = (l: CartLine) => isUnavailable(l.productId) || priceFor(l.productId, l.options) === undefined
-    const missing = lines.filter(gone)
-    if (missing.length) {
-      const ok = await overlay.confirm('unavailable', { items: missing.map(lineName) })
-      // SRS FR-ROR-04: if every item is unavailable, the cart is left unchanged
-      if (!ok || missing.length === lines.length) return
-    }
-    lines
-      .filter((l) => !gone(l))
-      .forEach((l) =>
-        addToCart({ productId: l.productId, options: l.options, note: l.note, unitPrice: priceFor(l.productId, l.options)!, qty: l.qty }),
-      )
-    navigate('/cart')
-  }
-}
 
 /** C-18 Orders — Active and History tabs. */
 export function Orders() {

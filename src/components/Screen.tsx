@@ -1,8 +1,9 @@
-import { useEffect, useState, type ReactNode } from 'react'
+import type { ReactNode } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { Icon, type IconName } from './Icon'
 import { LogoMark } from './ui'
 import { CountBadge } from './blocks'
+import { useWide } from '../state/media'
 import './screen.css'
 
 type Theme = 'light' | 'dark'
@@ -107,22 +108,6 @@ type ScreenProps = {
   /** Desktop width: `wide` screens (menu, product, home) use a wider column and multi-column lists. */
   layout?: 'column' | 'wide'
 }
-
-/** Follows a CSS media query. */
-export function useMedia(query: string) {
-  const [match, setMatch] = useState(() => typeof window !== 'undefined' && window.matchMedia(query).matches)
-  useEffect(() => {
-    const mq = window.matchMedia(query)
-    const on = () => setMatch(mq.matches)
-    on()
-    mq.addEventListener('change', on)
-    return () => mq.removeEventListener('change', on)
-  }, [query])
-  return match
-}
-
-/** True on tablets and desktops (the rail/sidebar layouts). */
-export const useWide = () => useMedia('(min-width: 768px)')
 
 /** Screen frame: status bar, optional top bar, scrolling body, sticky footer, home indicator.
  *  The footer holds the screen's one primary action. Phones pin it to the bottom edge; tablets and

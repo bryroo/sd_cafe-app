@@ -1,7 +1,8 @@
 // Flow 3 — Cart, pickup or delivery, checkout (C-14, C-32, C-33, C-15, C-16)
 import { useRef, useState } from 'react'
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom'
-import { Content, Row, Screen, TopBar, useMedia } from '../components/Screen'
+import { Content, Row, Screen, TopBar } from '../components/Screen'
+import { useMedia } from '../state/media'
 import { EmptyState, SwipeRow, TextArea } from '../components/blocks'
 import {
   AddressCard,
