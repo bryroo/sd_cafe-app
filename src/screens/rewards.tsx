@@ -20,6 +20,7 @@ import { useOverlay } from '../overlays/OverlayHost'
 import { useApp } from '../state/AppState'
 import { useShared } from '../state/shared'
 import { setFirstRun } from '../state/firstRun'
+import { withNext } from '../state/guest'
 import { useCountUp } from '../state/feedback'
 import './rewards.css'
 
@@ -53,7 +54,7 @@ function TierProgress({ label, value }: { label: string; value: number }) {
   )
 }
 
-type RewardState = 'available' | 'need' | 'redeemed' | 'used' | 'expired'
+type RewardState = 'available' | 'need' | 'redeemed' | 'used' | 'expired' | 'catalog'
 
 /** Card / Reward */
 function RewardCard({
@@ -70,7 +71,9 @@ function RewardCard({
   width?: number
 }) {
   const label =
-    state === 'available'
+    state === 'catalog'
+      ? 'Log in to redeem'
+      : state === 'available'
       ? 'Available'
       : state === 'need'
         ? `Need ${fmt(reward.cost - points)} more pts`
@@ -87,7 +90,10 @@ function RewardCard({
       </span>
       <span className="t-h3 reward-card__name">{reward.name}</span>
       <span className="reward-card__status t-caption">
-        <Icon name={state === 'available' ? 'check' : state === 'need' ? 'lock' : state === 'redeemed' ? 'tag' : 'clock'} size={15} />
+        <Icon
+          name={state === 'available' ? 'check' : state === 'need' || state === 'catalog' ? 'lock' : state === 'redeemed' ? 'tag' : 'clock'}
+          size={15}
+        />
         {label}
       </span>
     </button>
@@ -118,8 +124,30 @@ function ActivityRow({ item }: { item: Activity }) {
 }
 
 function useRewardState() {
-  const { points } = useApp()
-  return (r: Reward): RewardState => (r.cost > points ? 'need' : 'available')
+  const { points, isMember } = useApp()
+  // Guests see what each reward costs, not a balance they don't have
+  return (r: Reward): RewardState => (!isMember ? 'catalog' : r.cost > points ? 'need' : 'available')
+}
+
+/** Rewards for guests: what points are, and how to start collecting them */
+function GuestRewardsCard() {
+  const navigate = useNavigate()
+  return (
+    <section className="card guest-rewards" aria-labelledby="guest-rewards-title">
+      <h2 id="guest-rewards-title" className="t-h2">
+        Earn points on every order
+      </h2>
+      <p className="t-body muted">
+        Log in or create an account to collect points, then redeem them for free drinks and treats.
+      </p>
+      <div className="guest-rewards__actions">
+        <Button onClick={() => navigate(withNext('/log-in', '/rewards'))}>Log in</Button>
+        <Button variant="secondary" onClick={() => navigate(withNext('/sign-up', '/rewards'))}>
+          Create account
+        </Button>
+      </div>
+    </section>
+  )
 }
 
 /** Points needed for the next free-drink milestone (1,400 pts in the Figma copy: 1,240 + 160). */
@@ -128,7 +156,7 @@ function useRewardState() {
 /** C-20 Rewards */
 export function Rewards() {
   const navigate = useNavigate()
-  const { points, myRewards } = useApp()
+  const { points, myRewards, isMember } = useApp()
   // Ticks "See your points" on Home's Get started card
   useEffect(() => setFirstRun({ seenRewards: true }), [])
   // New points (an order just completed) count up, like the lamp warming
@@ -141,28 +169,37 @@ export function Rewards() {
   return (
     <Screen topBar={<TopBar type="title" title="Rewards" />} bottomNav={<BottomNav active="rewards" />}>
       <Content>
-        <Row>
-          <div className="card points-card">
-            <span className="t-caption muted">Points balance</span>
-            {/* First load: a bar, not a "0" that jumps to the real balance */}
-            {ready ? (
-              <span className="t-display num">
-                {fmt(shownPoints)}
-              </span>
-            ) : (
-              <span className="skeleton skeleton--plate" style={{ width: 120, height: 32 }} aria-label="Loading points" />
-            )}
-            <span className="t-body-sm muted">
-              {nextReward(points).text}
-            </span>
-            <TierProgress label="3 more orders to reach Loyal" value={75} />
-          </div>
-        </Row>
-        <Row>
-          <div className="card options-card">
-            <OptionRow icon="star" label="Your regular status" value="Regular" onClick={() => navigate('/rewards/status')} />
-          </div>
-        </Row>
+        {!isMember && (
+          <Row>
+            <GuestRewardsCard />
+          </Row>
+        )}
+        {isMember && (
+          <>
+            <Row>
+              <div className="card points-card">
+                <span className="t-caption muted">Points balance</span>
+                {/* First load: a bar, not a "0" that jumps to the real balance */}
+                {ready ? (
+                  <span className="t-display num">
+                    {fmt(shownPoints)}
+                  </span>
+                ) : (
+                  <span className="skeleton skeleton--plate" style={{ width: 120, height: 32 }} aria-label="Loading points" />
+                )}
+                <span className="t-body-sm muted">
+                  {nextReward(points).text}
+                </span>
+                <TierProgress label="3 more orders to reach Loyal" value={75} />
+              </div>
+            </Row>
+            <Row>
+              <div className="card options-card">
+                <OptionRow icon="star" label="Your regular status" value="Regular" onClick={() => navigate('/rewards/status')} />
+              </div>
+            </Row>
+          </>
+        )}
         <Row>
           <SectionHeader title="Available rewards" onLink={() => navigate('/rewards/catalog')} />
         </Row>
@@ -181,12 +218,14 @@ export function Rewards() {
         </Rail>
         <Row>
           <div className="card options-card">
-            <OptionRow
-              icon="tag"
-              label="My rewards"
-              value={`${unused} unused`}
-              onClick={() => navigate('/rewards/catalog?tab=mine')}
-            />
+            {isMember && (
+              <OptionRow
+                icon="tag"
+                label="My rewards"
+                value={`${unused} unused`}
+                onClick={() => navigate('/rewards/catalog?tab=mine')}
+              />
+            )}
             <OptionRow
               icon="receipt"
               label="Offers for you"
@@ -195,16 +234,20 @@ export function Rewards() {
             />
           </div>
         </Row>
-        <Row>
-          <SectionHeader title="Recent activity" onLink={() => navigate('/rewards/activity')} />
-        </Row>
-        <Row>
-          <div className="activity-group">
-            {recent.slice(0, 3).map((a) => (
-              <ActivityRow key={a.id} item={a} />
-            ))}
-          </div>
-        </Row>
+        {isMember && (
+          <>
+            <Row>
+              <SectionHeader title="Recent activity" onLink={() => navigate('/rewards/activity')} />
+            </Row>
+            <Row>
+              <div className="activity-group">
+                {recent.slice(0, 3).map((a) => (
+                  <ActivityRow key={a.id} item={a} />
+                ))}
+              </div>
+            </Row>
+          </>
+        )}
       </Content>
     </Screen>
   )
@@ -215,7 +258,7 @@ export function RewardCatalog() {
   const navigate = useNavigate()
   const [params, setParams] = useSearchParams()
   const tab = params.get('tab') === 'mine' ? 'mine' : 'available'
-  const { points, myRewards } = useApp()
+  const { points, myRewards, isMember } = useApp()
   const stateOf = useRewardState()
 
   return (
@@ -263,7 +306,16 @@ export function RewardCatalog() {
                 })}
           </div>
         </Row>
-        {tab === 'mine' && myRewards.length === 0 && (
+        {tab === 'mine' && !isMember && (
+          <EmptyState
+            illustration="star"
+            title="Log in to see your vouchers"
+            action={<Button onClick={() => navigate(withNext('/log-in', '/rewards/catalog?tab=mine'))}>Log in</Button>}
+          >
+            Vouchers you redeem with your points wait here until you use them.
+          </EmptyState>
+        )}
+        {tab === 'mine' && isMember && myRewards.length === 0 && (
           <EmptyState
             illustration="star"
             title="No vouchers yet"
@@ -287,7 +339,7 @@ export function RewardDetail() {
   const [params] = useSearchParams()
   const navigate = useNavigate()
   const overlay = useOverlay()
-  const { points, redeemReward, myRewards, setAppliedReward } = useApp()
+  const { points, redeemReward, myRewards, setAppliedReward, isMember } = useApp()
   const reward = rewardById(id)
   const [justRedeemed, setJustRedeemed] = useState(params.get('state') === 'redeemed')
   const [busy, setBusy] = useState(false)
@@ -329,7 +381,10 @@ export function RewardDetail() {
       footerBorder
       topBar={<TopBar title="Reward" />}
       footer={
-        state === 'redeemed' ? (
+        !isMember ? (
+          // Guests see the reward and its terms; redeeming needs an account (and points)
+          <Button onClick={() => navigate(withNext('/log-in', `/rewards/${reward.id}`))}>Log in to redeem</Button>
+        ) : state === 'redeemed' ? (
           <Button
             onClick={() => {
               // The voucher goes on the next order straight away (the server checks it again when ordering)
@@ -357,7 +412,7 @@ export function RewardDetail() {
             <h2 className="t-display">{reward.name}</h2>
           </header>
         </Row>
-        {state === 'insufficient' && (
+        {isMember && state === 'insufficient' && (
           <Row>
             <Alert tone="info">You need {fmt(need)} more points to redeem this reward.</Alert>
           </Row>

@@ -216,3 +216,11 @@
   margin-top: 2px;
   color: var(--muted);
 }
+
+/* Rewards for guests */
+.guest-rewards { display: flex; flex-direction: column; gap: var(--space-8); padding: var(--space-16); border-left: 3px solid var(--gold); }
+.guest-rewards__actions { display: flex; flex-direction: column; gap: var(--space-8); margin-top: var(--space-8); }
+@media (min-width: 768px) {
+  .guest-rewards__actions { flex-direction: row; }
+  .guest-rewards__actions .btn { width: auto; flex: 1 0 0; }
+}

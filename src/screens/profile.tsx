@@ -450,7 +450,7 @@ export function Settings() {
 /** C-34 Privacy (FR-PRF-06, NFR-SEC-07): the notice, consent for promotional messages, a copy of your data */
 export function Privacy() {
   const overlay = useOverlay()
-  const { promoConsent, setPromoConsent } = useApp()
+  const { promoConsent, setPromoConsent, isMember } = useApp()
 
   const download = () => {
     const blob = new Blob([JSON.stringify(customerDataExport(), null, 2)], { type: 'application/json' })
@@ -482,27 +482,32 @@ export function Privacy() {
             </p>
           </div>
         </Row>
-        <Row>
-          <div className="card toggles-card">
-            <Toggle
-              label="Promotional messages"
-              description="Offers and new items, by notification. Off unless you turn it on."
-              on={promoConsent}
-              onChange={setPromoConsent}
-            />
-          </div>
-        </Row>
-        <Row>
-          <h2 className="t-h3">Your data</h2>
-        </Row>
-        <Row>
-          <Button variant="secondary" onClick={download}>
-            Download my data
-          </Button>
-        </Row>
-        <Group>
-          <SettingsRow label="Delete account" danger onClick={() => overlay.open('delete-account')} />
-        </Group>
+        {/* The notice is for everyone (sign-up asks people to agree to it); the choices are the account's */}
+        {isMember && (
+          <>
+            <Row>
+              <div className="card toggles-card">
+                <Toggle
+                  label="Promotional messages"
+                  description="Offers and new items, by notification. Off unless you turn it on."
+                  on={promoConsent}
+                  onChange={setPromoConsent}
+                />
+              </div>
+            </Row>
+            <Row>
+              <h2 className="t-h3">Your data</h2>
+            </Row>
+            <Row>
+              <Button variant="secondary" onClick={download}>
+                Download my data
+              </Button>
+            </Row>
+            <Group>
+              <SettingsRow label="Delete account" danger onClick={() => overlay.open('delete-account')} />
+            </Group>
+          </>
+        )}
       </Content>
     </Screen>
   )
