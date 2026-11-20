@@ -710,3 +710,25 @@
 @media (min-width: 768px) {
   .app__screen .cart-bar { display: none; }
 }
+
+/* Swipe to remove (cart lines) */
+.swipe-row { position: relative; overflow: hidden; }
+.swipe-row + .swipe-row { border-top: 1px solid var(--rule); }
+.swipe-row__under {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: var(--space-8);
+  padding-right: var(--space-16);
+  background: var(--negative);
+  color: var(--surface);
+}
+.swipe-row__top {
+  position: relative;
+  background: var(--surface);
+  touch-action: pan-y;
+  transition: transform var(--dur-base) var(--ease-out);
+}
+.swipe-row__top.is-dragging { transition: none; }

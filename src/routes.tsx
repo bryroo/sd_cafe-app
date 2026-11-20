@@ -11,7 +11,7 @@ import {
   Welcome,
 } from './screens/account'
 import { Home, Menu, ProductDetail, Search, SectionList } from './screens/shop'
-import { Cart, Checkout, DeliveryAddress, OrderConfirmation, PickupOrDelivery } from './screens/checkout'
+import { Checkout, DeliveryAddress, OrderConfirmation, PickupOrDelivery } from './screens/checkout'
 import type { OverlayId } from './overlays/OverlayHost'
 import { OrderDetail, OrderTracking, Orders } from './screens/orders'
 import {
@@ -96,7 +96,8 @@ export const routes: RouteDef[] = [
   { path: '/search', element: <Search /> },
   { path: '/product/:id', element: <ProductDetail /> },
   // Flow 3
-  { path: '/cart', element: <Cart /> },
+  // Cart and checkout are one review screen; both addresses keep working
+  { path: '/cart', element: <Checkout /> },
   { path: '/fulfillment', element: <PickupOrDelivery /> },
   { path: '/address/:id', element: <DeliveryAddress /> },
   { path: '/checkout', element: <Checkout /> },

@@ -1,8 +1,8 @@
 // Flow 3 — Cart, pickup or delivery, checkout (C-14, C-32, C-33, C-15, C-16)
 import { useRef, useState } from 'react'
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom'
-import { Content, Row, Screen, TopBar } from '../components/Screen'
-import { TextArea } from '../components/blocks'
+import { Content, Row, Screen, TopBar, useMedia } from '../components/Screen'
+import { EmptyState, SwipeRow, TextArea } from '../components/blocks'
 import {
   AddressCard,
   Alert,
@@ -38,97 +38,15 @@ function useTotals() {
 function EmptyCart() {
   const navigate = useNavigate()
   return (
-    <Screen
-      topBar={<TopBar title="Your order" />}
-      footer={<Button onClick={() => navigate('/menu')}>Browse the menu</Button>}
-    >
-      <div className="empty-cart">
-        <Icon name="receipt" size={40} color="var(--muted)" />
-        <h2 className="t-h2">Your cart is empty</h2>
-        <p className="t-body muted">Add a drink or a meal to get started.</p>
-      </div>
-    </Screen>
-  )
-}
-
-/** C-14 Cart — Default (pickup) and Delivery states follow the chosen fulfillment. */
-export function Cart() {
-  const navigate = useNavigate()
-  const overlay = useOverlay()
-  const { cart, setQty, fulfillment, addresses, addressId, open, unavailableLines } = useApp()
-  const { subtotal, reward, offer, discount, deliveryFee, total } = useTotals()
-  const address = addresses.find((a) => a.id === addressId)
-  const hint = offerHint(cart)
-
-  if (cart.length === 0) return <EmptyCart />
-
-  return (
-    <Screen
-      footerBorder
-      topBar={<TopBar title="Your order" />}
-      footer={
-        <Button
-          className="btn--split"
-          height={52}
-          disabled={unavailableLines.length > 0}
-          onClick={() => navigate('/checkout')}
-        >
-          <span>Checkout</span>
-          <span className="num">{peso(total)}</span>
-        </Button>
-      }
-    >
+    <Screen topBar={<TopBar title="Your order" />}>
       <Content>
-        {!open.open && (
-          <Row>
-            <ClosedBanner {...open} />
-          </Row>
-        )}
-        {unavailableLines.length > 0 && (
-          <Row>
-            <Alert tone="danger">
-              {unavailableLines.map(lineName).join(' and ')} {unavailableLines.length > 1 ? 'are' : 'is'} no longer
-              available. Remove {unavailableLines.length > 1 ? 'them' : 'it'} to check out.
-            </Alert>
-          </Row>
-        )}
-        <Row>
-          <FulfillmentSummary type={fulfillment} address={address} onChange={() => navigate('/fulfillment')} />
-        </Row>
-        <Row>
-          <div className="cart-items">
-            {cart.map((l) => (
-              <CartItem
-                key={l.key}
-                line={l}
-                onQty={async (q) => {
-                  if (q > 0 || (await overlay.confirm('remove-item', { name: lineName(l) }))) setQty(l.key, q)
-                }}
-                onEdit={() => navigate(`/product/${l.productId}?edit=${encodeURIComponent(l.key)}`)}
-              />
-            ))}
-          </div>
-        </Row>
-        <Row>
-          <div>
-            <Button variant="text" height={48} full={false} onClick={() => navigate('/menu')}>
-              Add more items
-            </Button>
-          </div>
-        </Row>
-        {hint && (
-          <Row>
-            <Alert tone="success">{hint}</Alert>
-          </Row>
-        )}
-        {subtotal < FREE_DRINK_THRESHOLD && (
-          <Row>
-            <Alert>Add {peso(FREE_DRINK_THRESHOLD - subtotal)} more to get a free drink.</Alert>
-          </Row>
-        )}
-        <Row>
-          <PriceBreakdown subtotal={subtotal} reward={reward} offer={offer} discount={discount} deliveryFee={deliveryFee} />
-        </Row>
+        <EmptyState
+          illustration="cup"
+          title="Your cart is empty"
+          action={<Button onClick={() => navigate('/menu')}>Browse the menu</Button>}
+        >
+          Add a drink or a meal, then come back here to place your order.
+        </EmptyState>
       </Content>
     </Screen>
   )
@@ -298,16 +216,21 @@ export function DeliveryAddress() {
   )
 }
 
-/** C-15 Checkout — Default, Delivery, Processing (Place order shows the scrim + spinner). */
+/** C-14 + C-15 Your order: the cart and checkout on one review screen (/cart and /checkout).
+ *  Edit the lines, choose pickup or delivery, discounts and payment, then Place order. Phones keep
+ *  Place order pinned at the bottom; desktops put payment and the total in a summary panel on the
+ *  right. States: Default, Delivery, Closed, Processing. */
 export function Checkout() {
   const navigate = useNavigate()
   const [params] = useSearchParams()
   const app = useApp()
-  const { cart, cartCount, fulfillment, addresses, addressId, payment, session, useTierDiscount, placeOrder, open, unavailableLines } =
+  const { cart, fulfillment, addresses, addressId, payment, session, useTierDiscount, placeOrder, open, unavailableLines, setQty, addToCart } =
     app
   const { subtotal, reward, offer, discount, deliveryFee, total, promoProblem } = useTotals()
   const overlay = useOverlay()
+  const twoCol = useMedia('(min-width: 1024px)')
   const [note, setNote] = useState('')
+  const [noteOpen, setNoteOpen] = useState(false)
   const [processing, setProcessing] = useState(params.get('state') === 'processing')
   const [paymentError, setPaymentError] = useState(false)
   const paymentRow = useRef<HTMLDivElement>(null)
@@ -315,8 +238,18 @@ export function Checkout() {
   const attempt = useRef(crypto.randomUUID())
   const address = addresses.find((a) => a.id === addressId)
   const blocked = !open.open || unavailableLines.length > 0
+  const hint = offerHint(cart)
 
   if (cart.length === 0 && !processing) return <EmptyCart />
+
+  /** Remove a line, with Undo instead of an "are you sure" (it's only the cart) */
+  const removeLine = (l: CartLine) => {
+    setQty(l.key, 0)
+    overlay.toast(`Removed ${lineName(l)}`, {
+      label: 'Undo',
+      onClick: () => addToCart({ productId: l.productId, options: l.options, note: l.note, unitPrice: l.unitPrice, qty: l.qty }),
+    })
+  }
 
   const submit = async (retry = false): Promise<void> => {
     if (session !== 'member') {
@@ -385,28 +318,31 @@ export function Checkout() {
     }
   }
 
+  const placeButton = (
+    <Button
+      onClick={() => submit()}
+      disabled={processing || blocked}
+      aria-busy={processing}
+      className={`btn--processing ${processing ? '' : 'btn--split'}`}
+      height={52}
+    >
+      {processing ? (
+        <Loader dark />
+      ) : (
+        <>
+          <span>{session === 'member' ? 'Place order' : 'Log in to order'}</span>
+          <span className="num">{peso(total)}</span>
+        </>
+      )}
+    </Button>
+  )
+
   return (
     <Screen
+      layout="wide"
       footerBorder
-      topBar={<TopBar title="Checkout" />}
-      footer={
-        <Button
-          onClick={() => submit()}
-          disabled={processing || blocked}
-          aria-busy={processing}
-          className={`btn--processing ${processing ? '' : 'btn--split'}`}
-          height={52}
-        >
-          {processing ? (
-            <Loader dark />
-          ) : (
-            <>
-              <span>Place order</span>
-              <span className="num">{peso(total)}</span>
-            </>
-          )}
-        </Button>
-      }
+      topBar={<TopBar title="Your order" />}
+      footer={twoCol ? undefined : placeButton}
       overlay={processing && <div className="processing-scrim" aria-hidden />}
     >
       <Content>
@@ -419,7 +355,7 @@ export function Checkout() {
           <Row>
             <Alert tone="danger">
               {unavailableLines.map(lineName).join(' and ')} {unavailableLines.length > 1 ? 'are' : 'is'} no longer
-              available. Go back to your cart to remove {unavailableLines.length > 1 ? 'them' : 'it'}.
+              available. Remove {unavailableLines.length > 1 ? 'them' : 'it'} to place your order.
             </Alert>
           </Row>
         )}
@@ -428,66 +364,114 @@ export function Checkout() {
             <Alert tone="warning">{promoProblem}</Alert>
           </Row>
         )}
-        <Row>
-          <FulfillmentSummary type={fulfillment} address={address} onChange={() => navigate('/fulfillment')} />
-        </Row>
-        <Row>
-          <section className="card checkout-items" aria-labelledby="checkout-items">
-            <div className="checkout-items__head">
-              <h2 id="checkout-items" className="t-h3">
-                {cartCount} item{cartCount === 1 ? '' : 's'}
-              </h2>
-              <button className="t-body-sm link-text" onClick={() => navigate('/cart')}>
-                Edit
-              </button>
-            </div>
-            {cart.map((l) => (
-              <OrderLine key={l.key} line={l} />
-            ))}
-          </section>
-        </Row>
-        <Row>
-          <div className={`card options-card ${paymentError ? 'options-card--error' : ''}`} ref={paymentRow}>
-            <OptionRow
-              icon="tag"
-              label="Discount & rewards"
-              value={
-                session !== 'member'
-                  ? 'Log in to use'
-                  : [offer?.code, reward?.name].filter(Boolean).join(' · ') ||
-                    (useTierDiscount ? 'Regular discount' : 'None')
-              }
-              onClick={() => overlay.open('discounts')}
-            />
-            <OptionRow
-              icon="card"
-              label="Payment method"
-              value={payment || 'Choose a method'}
-              onClick={() => {
-                setPaymentError(false)
-                overlay.open('payment')
-              }}
-            />
+        <div className="review">
+          <div className="review__main">
+            <Row>
+              <FulfillmentSummary type={fulfillment} address={address} onChange={() => navigate('/fulfillment')} />
+            </Row>
+            <Row>
+              <section className="card review__items" aria-labelledby="review-items">
+                <h2 id="review-items" className="sr-only">
+                  Items
+                </h2>
+                {cart.map((l) => (
+                  <SwipeRow key={l.key} onRemove={() => removeLine(l)}>
+                    <CartItem
+                      line={l}
+                      onQty={(q) => (q > 0 ? setQty(l.key, q) : removeLine(l))}
+                      onEdit={() => navigate(`/product/${l.productId}?edit=${encodeURIComponent(l.key)}`)}
+                    />
+                  </SwipeRow>
+                ))}
+              </section>
+            </Row>
+            <Row>
+              <div>
+                <Button variant="text" height={48} full={false} icon={<Icon name="plus" size={20} />} onClick={() => navigate('/menu')}>
+                  Add more items
+                </Button>
+              </div>
+            </Row>
+            {hint && (
+              <Row>
+                <Alert tone="success">{hint}</Alert>
+              </Row>
+            )}
+            {subtotal < FREE_DRINK_THRESHOLD && (
+              <Row>
+                <Alert>Add {peso(FREE_DRINK_THRESHOLD - subtotal)} more to get a free drink.</Alert>
+              </Row>
+            )}
           </div>
-          {paymentError && (
-            <p className="field__error t-caption" role="alert">
-              <Icon name="alert" size={16} />
-              Choose how you'll pay.
-            </p>
-          )}
-        </Row>
-        <Row>
-          <TextArea
-            label="Note for the cafe"
-            placeholder="Optional"
-            helper="Optional · up to 140 characters"
-            value={note}
-            onChange={setNote}
-          />
-        </Row>
-        <Row>
-          <PriceBreakdown subtotal={subtotal} reward={reward} offer={offer} discount={discount} deliveryFee={deliveryFee} />
-        </Row>
+          <aside className="review__side" aria-label="Payment and total">
+            <Row>
+              <div className={`card options-card ${paymentError ? 'options-card--error' : ''}`} ref={paymentRow}>
+                <OptionRow
+                  icon="tag"
+                  label="Discounts"
+                  value={
+                    session !== 'member'
+                      ? 'Log in to use'
+                      : [offer?.code, reward?.name].filter(Boolean).join(' · ') ||
+                        (useTierDiscount ? 'Regular discount' : 'None')
+                  }
+                  onClick={() => overlay.open('discounts')}
+                />
+                <OptionRow
+                  icon="card"
+                  label="Payment method"
+                  value={payment || 'Choose a method'}
+                  onClick={() => {
+                    setPaymentError(false)
+                    overlay.open('payment')
+                  }}
+                />
+              </div>
+              {paymentError && (
+                <p className="field__error t-caption" role="alert">
+                  <Icon name="alert" size={16} />
+                  Choose how you'll pay.
+                </p>
+              )}
+            </Row>
+            {reward && (
+              <Row>
+                <Alert
+                  tone="success"
+                  icon="tag"
+                  action={
+                    <button className="t-body-sm link-text review__remove" onClick={() => app.setAppliedReward(null)}>
+                      Remove
+                    </button>
+                  }
+                >
+                  {reward.name} voucher applied
+                </Alert>
+              </Row>
+            )}
+            <Row>
+              {noteOpen || note ? (
+                <TextArea
+                  label="Note for the cafe"
+                  placeholder="e.g. Please call when it's ready"
+                  helper="Optional · up to 140 characters"
+                  value={note}
+                  onChange={setNote}
+                />
+              ) : (
+                <div>
+                  <Button variant="text" height={48} full={false} icon={<Icon name="note" size={20} />} onClick={() => setNoteOpen(true)}>
+                    Add a note for the cafe
+                  </Button>
+                </div>
+              )}
+            </Row>
+            <Row>
+              <PriceBreakdown subtotal={subtotal} reward={reward} offer={offer} discount={discount} deliveryFee={deliveryFee} />
+            </Row>
+            {twoCol && <Row>{placeButton}</Row>}
+          </aside>
+        </div>
       </Content>
     </Screen>
   )

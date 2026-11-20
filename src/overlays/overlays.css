@@ -197,7 +197,9 @@
   position: absolute;
   left: 12px;
   right: 12px;
-  top: calc(var(--status-h) + 8px);
+  /* A snackbar: low on the screen, above the tab bar and the screen's main button, so it never
+     covers the back button or the title */
+  bottom: calc(var(--home-h) + 148px);
   z-index: 30;
   display: flex;
   align-items: center;
@@ -224,7 +226,20 @@
 }
 .app-toast__action:hover { background: var(--plate-steel); }
 @keyframes toast-drop {
-  from { transform: translateY(-8px); opacity: 0; }
+  from { transform: translateY(8px); opacity: 0; }
+}
+@media (min-width: 768px) {
+  .app__screen .app-toast {
+    left: 50%;
+    right: auto;
+    bottom: var(--space-24);
+    width: min(520px, calc(100% - 48px));
+    transform: translateX(-50%);
+    animation-name: toast-rise;
+  }
+}
+@keyframes toast-rise {
+  from { transform: translate(-50%, 8px); opacity: 0; }
 }
 @media (prefers-reduced-motion: reduce) {
   .app-toast { animation: none; }

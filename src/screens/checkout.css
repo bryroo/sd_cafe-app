@@ -43,6 +43,24 @@
   from { opacity: 0; }
 }
 
+/* Your order: one review screen. Phones: one column. Desktops: lines on the left, a sticky
+   summary (discounts, payment, total, Place order) on the right. */
+.review,
+.review__main,
+.review__side { display: flex; flex-direction: column; gap: var(--space-16); }
+.review__items { padding: 0; overflow: hidden; }
+.review__items .cart-item { padding-inline: var(--space-16); }
+.review__remove { min-height: 44px; padding: 0 var(--space-4); flex-shrink: 0; }
+@media (min-width: 1024px) {
+  .review {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) 380px;
+    align-items: start;
+    gap: var(--space-8);
+  }
+  .review__side { position: sticky; top: var(--space-8); }
+}
+
 /* Checkout items, listed where they are paid for */
 .checkout-items { padding: 8px 16px 8px; }
 .checkout-items__head {

@@ -108,19 +108,21 @@ type ScreenProps = {
   layout?: 'column' | 'wide'
 }
 
-const WIDE = '(min-width: 768px)'
-
-/** True on tablets and desktops (the rail/sidebar layouts). */
-export function useWide() {
-  const [wide, setWide] = useState(() => typeof window !== 'undefined' && window.matchMedia(WIDE).matches)
+/** Follows a CSS media query. */
+export function useMedia(query: string) {
+  const [match, setMatch] = useState(() => typeof window !== 'undefined' && window.matchMedia(query).matches)
   useEffect(() => {
-    const mq = window.matchMedia(WIDE)
-    const on = () => setWide(mq.matches)
+    const mq = window.matchMedia(query)
+    const on = () => setMatch(mq.matches)
+    on()
     mq.addEventListener('change', on)
     return () => mq.removeEventListener('change', on)
-  }, [])
-  return wide
+  }, [query])
+  return match
 }
+
+/** True on tablets and desktops (the rail/sidebar layouts). */
+export const useWide = () => useMedia('(min-width: 768px)')
 
 /** Screen frame: status bar, optional top bar, scrolling body, sticky footer, home indicator.
  *  The footer holds the screen's one primary action. Phones pin it to the bottom edge; tablets and

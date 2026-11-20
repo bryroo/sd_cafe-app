@@ -1,5 +1,5 @@
 // Composite blocks: navigation, menu-board rows, the live-order bar, selectors.
-import type { CSSProperties, ReactNode } from 'react'
+import { useRef, useState, type CSSProperties, type ReactNode } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { peso, type Product } from '../data/menu'
 import { Icon, type IconName } from './Icon'
@@ -702,5 +702,61 @@ export function ListGroup({ title, children }: { title?: string; children: React
       {title && <h2 className="t-caption list-group__title">{title}</h2>}
       <div className="list-group__rows">{children}</div>
     </section>
+  )
+}
+
+/** Swipe a row left to remove it (touch and pen only; a mouse or keyboard uses the row's own
+ *  controls). Past the threshold it removes on release; short of it, it springs back. */
+export function SwipeRow({ children, onRemove, label = 'Remove' }: { children: ReactNode; onRemove: () => void; label?: string }) {
+  const start = useRef<{ x: number; y: number; id: number } | null>(null)
+  const [dx, setDx] = useState(0)
+  const [dragging, setDragging] = useState(false)
+  const THRESHOLD = 96
+  return (
+    <div className="swipe-row">
+      <div className="swipe-row__under" aria-hidden>
+        <Icon name="trash" size={20} />
+        <span className="t-button">{label}</span>
+      </div>
+      <div
+        className={`swipe-row__top ${dragging ? 'is-dragging' : ''}`}
+        style={{ transform: dx ? `translateX(${dx}px)` : undefined }}
+        onPointerDown={(e) => {
+          if (e.pointerType === 'mouse') return
+          start.current = { x: e.clientX, y: e.clientY, id: e.pointerId }
+        }}
+        onPointerMove={(e) => {
+          const s = start.current
+          if (!s || s.id !== e.pointerId) return
+          const x = e.clientX - s.x
+          const y = e.clientY - s.y
+          // Only a clearly sideways drag is a swipe; scrolling stays scrolling
+          if (!dragging) {
+            if (Math.abs(y) > 10 && Math.abs(y) > Math.abs(x)) {
+              start.current = null
+              return
+            }
+            if (x > -12) return
+            setDragging(true)
+            e.currentTarget.setPointerCapture(e.pointerId)
+          }
+          setDx(Math.max(-160, Math.min(0, x)))
+        }}
+        onPointerUp={() => {
+          const remove = dragging && dx <= -THRESHOLD
+          start.current = null
+          setDragging(false)
+          setDx(0)
+          if (remove) onRemove()
+        }}
+        onPointerCancel={() => {
+          start.current = null
+          setDragging(false)
+          setDx(0)
+        }}
+      >
+        {children}
+      </div>
+    </div>
   )
 }

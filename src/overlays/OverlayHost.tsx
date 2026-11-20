@@ -3,7 +3,7 @@ import { createContext, useCallback, useContext, useEffect, useMemo, useRef, use
 import { createPortal } from 'react-dom'
 import { useNavigate } from 'react-router-dom'
 import { Radio, Stepper, TextArea } from '../components/blocks'
-import { DiscountRow } from '../components/order'
+import { DiscountRow, formatOptions } from '../components/order'
 import { Button, Photo, TextField } from '../components/ui'
 import { Icon } from '../components/Icon'
 import counterPhoto from '../assets/photos/counter-cup-meal.webp'
@@ -678,7 +678,7 @@ function QuickAddSheet({ productId, close }: { productId: string; close: () => v
         <span className="quick-add-row__text">
           <span className="t-h3">{product.name}</span>
           {/* What the standard order is for this item, so nothing is added unseen */}
-          {line.options.length > 0 && <span className="t-body-sm muted">{line.options.join(' · ')}</span>}
+          {line.options.length > 0 && <span className="t-body-sm muted">{formatOptions(line.options)}</span>}
           <span className="t-body num">{peso(line.unitPrice)}</span>
         </span>
         <Stepper value={qty} onChange={setQty} min={1} />
