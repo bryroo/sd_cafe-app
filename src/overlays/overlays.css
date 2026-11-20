@@ -178,7 +178,7 @@
   gap: var(--space-8);
 }
 .promo-row .field { flex: 1 0 0; min-width: 0; }
-.promo-row > .btn { margin-top: 28px; }
+.promo-row > .btn { margin-top: var(--space-24); }
 
 /* A reward choice: the radio, then what it would make free in this cart, under its label */
 .reward-choice + .reward-choice { border-top: 1px solid var(--rule); }

@@ -40,8 +40,8 @@
 .pwa-offline__pill {
   display: inline-flex;
   align-items: center;
-  gap: 6px;
-  padding: 4px 10px;
+  gap: var(--space-8);
+  padding: var(--space-4) var(--space-12);
   border-radius: var(--radius-pill);
   background: var(--plate);
   color: var(--on-dark);

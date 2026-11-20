@@ -644,7 +644,7 @@
 .card-skeleton {
   display: flex;
   flex-direction: column;
-  gap: 10px;
+  gap: var(--space-12);
   padding: 16px;
   background: var(--surface);
   border: 1px solid var(--border);

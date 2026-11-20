@@ -435,7 +435,7 @@ button.option-row:hover .option-row__label { text-decoration: underline; text-un
 .cart-item__gone {
   display: inline-flex;
   align-items: center;
-  gap: 6px;
+  gap: var(--space-8);
   color: var(--negative);
   font-weight: 600;
 }
