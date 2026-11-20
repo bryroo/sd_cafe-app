@@ -55,7 +55,12 @@ export function TopBar({ title = '', type = 'back', onBack, actions }: TopBarPro
         </button>
       )}
       {type === 'home' && <LogoMark size={32} />}
-      <h1 className={`top-bar__title ${type === 'back' ? 't-h3' : type === 'home' ? 't-h2' : 't-h1'}`}>{title}</h1>
+      {/* No title → no heading: the screen's own <h1> (e.g. "Log in") is the one that counts */}
+      {title ? (
+        <h1 className={`top-bar__title ${type === 'back' ? 't-h3' : type === 'home' ? 't-h2' : 't-h1'}`}>{title}</h1>
+      ) : (
+        <span className="top-bar__title" />
+      )}
       <div className="top-bar__actions">{actions}</div>
     </div>
   )

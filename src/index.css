@@ -337,6 +337,8 @@ h3 {
 
 /* Keyboard focus is always visible; components with their own ring keep it */
 :focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
+/* A heading focused after a route change (for screen readers) isn't a control: no ring */
+h1[tabindex='-1']:focus { outline: none; }
 .live-order:focus-visible,
 .poster:focus-visible,
 .cart-bar:focus-visible,
