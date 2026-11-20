@@ -11,7 +11,7 @@
   position: absolute;
   inset: 0;
   background: var(--scrim);
-  animation: fade-in 0.15s ease-out;
+  animation: fade-in var(--dur-fast) var(--ease-out);
 }
 @keyframes fade-in {
   from { opacity: 0; }
@@ -33,7 +33,7 @@
   border-radius: var(--radius-sheet) var(--radius-sheet) 0 0;
   box-shadow: var(--elevation-2);
   outline: none;
-  animation: sheet-up 0.22s cubic-bezier(0.2, 0.8, 0.2, 1);
+  animation: sheet-up var(--dur-base) var(--ease-out);
 }
 @keyframes sheet-up {
   from { transform: translateY(100%); }
@@ -82,7 +82,7 @@
   border-radius: var(--radius-modal);
   box-shadow: var(--elevation-3);
   outline: none;
-  animation: pop 0.18s ease-out;
+  animation: pop var(--dur-base) var(--ease-out);
 }
 @keyframes pop {
   from { transform: scale(0.96); opacity: 0; }
@@ -208,7 +208,7 @@
   color: var(--on-dark);
   border-radius: var(--radius-card);
   box-shadow: var(--elevation-3);
-  animation: toast-drop 0.2s ease-out;
+  animation: toast-drop var(--dur-base) var(--ease-out);
 }
 .app-toast__text { flex: 1 0 0; min-width: 0; }
 .app-toast__action {
@@ -243,7 +243,7 @@
     border-radius: var(--radius-modal);
     box-shadow: var(--elevation-3);
     transform: translate(-50%, -50%);
-    animation: sheet-pop 0.18s ease-out;
+    animation: sheet-pop var(--dur-base) var(--ease-out);
   }
   .app__screen .sheet__handle { display: none; }
 }
@@ -252,4 +252,37 @@
 }
 @media (prefers-reduced-motion: reduce) {
   .app__screen .sheet { animation: none; }
+}
+
+/* Help and support */
+.help-heading { display: flex; align-items: center; gap: var(--space-8); flex-wrap: wrap; }
+.help-list { list-style: none; margin: 0; padding: 0; border: 1px solid var(--border); border-radius: var(--radius-card); }
+.help-list li + li { border-top: 1px solid var(--rule); }
+.help-list__row {
+  display: flex;
+  align-items: center;
+  gap: var(--space-12);
+  min-height: 48px;
+  padding: 0 var(--space-12);
+  color: var(--ink);
+  text-decoration: none;
+}
+.help-list__row:hover { background: var(--raised); }
+.help-list__value { margin-left: auto; text-align: right; overflow-wrap: anywhere; }
+.help-hours { margin: 0; display: grid; gap: var(--space-4); }
+.help-hours__row { display: flex; justify-content: space-between; gap: var(--space-12); }
+.help-hours dd { margin: 0; }
+
+/* Keyboard shortcuts */
+.shortcuts { margin: 0; display: grid; gap: var(--space-12); }
+.shortcuts__row { display: grid; grid-template-columns: 112px 1fr; align-items: center; gap: var(--space-12); }
+.shortcuts dd { margin: 0; }
+.shortcuts kbd {
+  display: inline-block;
+  padding: 2px var(--space-8);
+  border: 1px solid var(--control);
+  border-bottom-width: 2px;
+  border-radius: var(--radius-badge);
+  font-family: inherit;
+  background: var(--raised);
 }

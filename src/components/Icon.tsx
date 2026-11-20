@@ -182,6 +182,12 @@ const paths = {
     </>
   ),
   message: <path d="M4.5 5.5h15v10h-9l-4.5 3.5v-3.5H4.5z" />,
+  mail: (
+    <>
+      <rect x="3.5" y="5.5" width="17" height="13" rx="1.5" />
+      <path d="M4 7l8 6 8-6" />
+    </>
+  ),
   edit: (
     <>
       <path d="M14.5 5.5l4 4L9 19H5v-4z" />

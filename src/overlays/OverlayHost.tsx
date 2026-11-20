@@ -10,7 +10,9 @@ import counterPhoto from '../assets/photos/counter-cup-meal.webp'
 import { peso, productById } from '../data/menu'
 import { checkPromo, featuredPromotion, freeItemsLine, rewardById, rewardSavings } from '../data/rewards'
 import { COUNTER, quickAddLine, tierDiscount, useApp } from '../state/AppState'
-import { deleteCustomerData } from '../state/shared'
+import { DAYS, deleteCustomerData, hourLabel, useShared } from '../state/shared'
+import { signalCartAdded } from '../state/feedback'
+import { CONTACT } from '../data/contact'
 import './overlays.css'
 
 export type OverlayId =
@@ -31,6 +33,10 @@ export type OverlayId =
   | 'payment-declined'
   | 'order-failed'
   | 'delete-account'
+  | 'help'
+  | 'about'
+  | 'shortcuts'
+  | 'reset-demo'
 
 type Payload = Record<string, unknown>
 type Current = { id: OverlayId; data: Payload; resolve?: (ok: boolean) => void }
@@ -83,11 +89,38 @@ export function OverlayHost({ children }: { children: ReactNode }) {
     })
   }, [])
 
+  // While a sheet or dialog is open: Esc closes it, Tab stays inside it, and focus goes back to
+  // whatever opened it when it closes.
   useEffect(() => {
     if (!current) return
-    const onKey = (e: KeyboardEvent) => e.key === 'Escape' && close()
+    const opener = document.activeElement instanceof HTMLElement ? document.activeElement : null
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') return close()
+      if (e.key !== 'Tab') return
+      const root = document.querySelector<HTMLElement>('.overlay-root')
+      if (!root) return
+      const items = [
+        ...root.querySelectorAll<HTMLElement>(
+          'a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])',
+        ),
+      ].filter((el) => el.offsetParent !== null)
+      if (!items.length) return
+      const first = items[0]
+      const last = items[items.length - 1]
+      const inside = root.contains(document.activeElement)
+      if (e.shiftKey && (document.activeElement === first || !inside)) {
+        e.preventDefault()
+        last.focus()
+      } else if (!e.shiftKey && (document.activeElement === last || !inside)) {
+        e.preventDefault()
+        first.focus()
+      }
+    }
     window.addEventListener('keydown', onKey)
-    return () => window.removeEventListener('keydown', onKey)
+    return () => {
+      window.removeEventListener('keydown', onKey)
+      if (opener?.isConnected) opener.focus({ preventScroll: true })
+    }
   }, [current, close])
 
   // Overlays render into the phone frame (#phone) so they never cover the prototype chrome.
@@ -110,7 +143,7 @@ export function OverlayHost({ children }: { children: ReactNode }) {
       {toastState &&
         target &&
         createPortal(
-          <div className="app-toast" role="status" key={toastState.id}>
+          <div className="app-toast" role="status" aria-live="polite" key={toastState.id}>
             <span className="t-body app-toast__text">{toastState.text}</span>
             {toastState.action && (
               <button
@@ -524,6 +557,74 @@ function OverlayContent({
         </Dialog>
       )
 
+    /* Profile → Help and support */
+    case 'help':
+      return <HelpSheet close={close} />
+
+    /* Profile → About */
+    case 'about':
+      return (
+        <Sheet title="About MEGS' Cafe" onClose={close}>
+          <p className="t-body">The best time is coffee time.</p>
+          <p className="t-body muted">
+            Order ahead for pickup at the counter or for delivery, follow your order live, and earn points toward free
+            drinks.
+          </p>
+          <Button
+            variant="secondary"
+            onClick={() => {
+              close()
+              navigate('/settings/privacy')
+            }}
+          >
+            Privacy and your data
+          </Button>
+          <p className="t-caption muted">App version {__APP_VERSION__}</p>
+        </Sheet>
+      )
+
+    /* "?" on a keyboard: what the shortcuts are */
+    case 'shortcuts':
+      return (
+        <Sheet title="Keyboard shortcuts" onClose={close}>
+          <dl className="shortcuts">
+            {[
+              ['Alt + 1 … 5', 'Home, Menu, Orders, Rewards, Profile'],
+              ['/', 'Search the menu'],
+              ['?', 'Show these shortcuts'],
+              ['Esc', 'Close a sheet or dialog'],
+            ].map(([k, v]) => (
+              <div key={k} className="shortcuts__row">
+                <dt>
+                  <kbd className="t-body-sm">{k}</kbd>
+                </dt>
+                <dd className="t-body">{v}</dd>
+              </div>
+            ))}
+          </dl>
+        </Sheet>
+      )
+
+    /* Settings → Reset demo data */
+    case 'reset-demo':
+      return (
+        <Dialog
+          title="Reset the demo?"
+          actions={
+            <>
+              <Button variant="danger" onClick={accept}>
+                Reset demo
+              </Button>
+              <Button variant="secondary" onClick={close}>
+                Cancel
+              </Button>
+            </>
+          }
+        >
+          <p className="t-body muted">The cart, orders, staff console and store settings on this device will be cleared.</p>
+        </Dialog>
+      )
+
     /* O-12 Log out? */
     case 'logout':
       return (
@@ -563,19 +664,24 @@ function OverlayContent({
 
 function QuickAddSheet({ productId, close }: { productId: string; close: () => void }) {
   const { addToCart } = useApp()
+  const { toast } = useOverlay()
+  const navigate = useNavigate()
   const product = productById(productId)
   const [qty, setQty] = useState(1)
   const [noteOpen, setNoteOpen] = useState(false)
   const [note, setNote] = useState('')
   if (!product) return null
+  const line = quickAddLine(product.id)
   return (
     <Sheet title="Quick add" onClose={close}>
       <div className="quick-add-row">
         <span className="quick-add-row__text">
           <span className="t-h3">{product.name}</span>
-          <span className="t-body muted">{peso(product.price)}</span>
+          {/* What the standard order is for this item, so nothing is added unseen */}
+          {line.options.length > 0 && <span className="t-body-sm muted">{line.options.join(' · ')}</span>}
+          <span className="t-body num">{peso(line.unitPrice)}</span>
         </span>
-        <Stepper value={qty} onChange={setQty} min={1} removeAtMin onRemove={close} />
+        <Stepper value={qty} onChange={setQty} min={1} />
       </div>
       {noteOpen ? (
         <TextArea label="Note" placeholder="e.g. less ice" value={note} onChange={setNote} helper="Optional" />
@@ -587,12 +693,26 @@ function QuickAddSheet({ productId, close }: { productId: string; close: () => v
         </div>
       )}
       <Button
+        className="btn--split"
         onClick={() => {
-          addToCart({ ...quickAddLine(product.id), qty, note: note.trim() })
+          addToCart({ ...line, qty, note: note.trim() })
           close()
+          signalCartAdded()
+          toast(`Added ${product.name}`, { label: 'View cart', onClick: () => navigate('/cart') })
         }}
       >
-        Add · {peso(product.price * qty)}
+        <span>Add to order</span>
+        <span className="num">{peso(line.unitPrice * qty)}</span>
+      </Button>
+      <Button
+        variant="text"
+        height={48}
+        onClick={() => {
+          close()
+          navigate(`/product/${product.id}`)
+        }}
+      >
+        Choose size and options
       </Button>
     </Sheet>
   )
@@ -702,7 +822,7 @@ function DiscountsSheet({ close }: { close: () => void }) {
           onClick={applyCode}
           aria-busy={checking}
         >
-          {checking ? 'Checking…' : 'Apply'}
+          {checking ? 'Checking…' : 'Apply code'}
         </Button>
         </div>
       )}
@@ -716,9 +836,66 @@ function DiscountsSheet({ close }: { close: () => void }) {
           close()
         }}
       >
-        Apply
+        Done
       </Button>
     </Sheet>
   )
 }
 
+
+/** Profile → Help and support: where order help lives, how to reach the cafe, opening hours. */
+function HelpSheet({ close }: { close: () => void }) {
+  const navigate = useNavigate()
+  const { store } = useShared()
+  const rows = [
+    CONTACT.phone && { icon: 'phone' as const, label: 'Call', value: CONTACT.phone, href: `tel:${CONTACT.phone.replace(/\s/g, '')}` },
+    CONTACT.email && { icon: 'mail' as const, label: 'Email', value: CONTACT.email, href: `mailto:${CONTACT.email}` },
+    CONTACT.facebook && { icon: 'globe' as const, label: 'Facebook', value: CONTACT.facebook, href: `https://${CONTACT.facebook}` },
+  ].filter(Boolean) as { icon: 'phone' | 'mail' | 'globe'; label: string; value: string; href: string }[]
+  return (
+    <Sheet title="Help and support" onClose={close}>
+      <p className="t-body muted">
+        For anything about an order you've placed, the quickest help is at the counter. Have your order number ready.
+      </p>
+      <Button
+        variant="secondary"
+        onClick={() => {
+          close()
+          navigate('/orders')
+        }}
+      >
+        Go to my orders
+      </Button>
+      <h3 className="t-h3 help-heading">
+        Contact the cafe
+        {CONTACT.placeholder && <span className="badge badge--muted badge--sm t-caption">Sample details</span>}
+      </h3>
+      <ul className="help-list">
+        {rows.map((r) => (
+          <li key={r.label}>
+            <a
+              className="help-list__row"
+              href={r.href}
+              target={r.href.startsWith('http') ? '_blank' : undefined}
+              rel={r.href.startsWith('http') ? 'noopener' : undefined}
+            >
+              <Icon name={r.icon} size={20} />
+              <span className="t-body">{r.label}</span>
+              <span className="t-body-sm muted help-list__value">{r.value}</span>
+            </a>
+          </li>
+        ))}
+      </ul>
+      <h3 className="t-h3">Opening hours</h3>
+      <dl className="help-hours t-body-sm">
+        {store.hours.map((h, i) => (
+          <div key={DAYS[i]} className="help-hours__row">
+            <dt>{DAYS[i]}</dt>
+            <dd className="num">{h.closed ? 'Closed' : `${hourLabel(h.open)} – ${hourLabel(h.close)}`}</dd>
+          </div>
+        ))}
+      </dl>
+      {CONTACT.address && <p className="t-body-sm muted">{CONTACT.address}</p>}
+    </Sheet>
+  )
+}

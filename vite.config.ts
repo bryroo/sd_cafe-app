@@ -60,6 +60,8 @@ const apiCacheKey = {
 
 // https://vite.dev/config/
 export default defineConfig({
+  // Shown in Profile → About: the day this build was made
+  define: { __APP_VERSION__: JSON.stringify(new Date().toISOString().slice(0, 10)) },
   plugins: [
     react(),
     // Progressive web app: the manifest and a service worker that precaches every built file, so the
