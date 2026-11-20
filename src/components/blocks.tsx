@@ -212,6 +212,7 @@ export function RewardsStrip({
         <span
           className="points-strip__track"
           role="progressbar"
+          aria-label="Progress to your next reward"
           aria-valuenow={Math.round(progress * 100)}
           aria-valuemin={0}
           aria-valuemax={100}

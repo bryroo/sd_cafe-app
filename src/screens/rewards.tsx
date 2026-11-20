@@ -45,7 +45,7 @@ function TierProgress({ label, value }: { label: string; value: number }) {
   return (
     <div className="tier-progress">
       <span className="t-body-sm">{label}</span>
-      <span className="tier-progress__track" role="progressbar" aria-valuenow={value} aria-valuemin={0} aria-valuemax={100}>
+      <span className="tier-progress__track" role="progressbar" aria-label={label} aria-valuenow={value} aria-valuemin={0} aria-valuemax={100}>
         <span style={{ width: `${value}%` }} />
       </span>
     </div>

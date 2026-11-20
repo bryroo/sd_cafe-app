@@ -177,8 +177,13 @@
 }
 .address-card__edit {
   position: absolute;
-  right: 16px;
-  top: 16px;
+  right: var(--space-4);
+  top: var(--space-4);
+  min-width: 48px;
+  min-height: 44px;
+  padding: 0 var(--space-12);
+  display: grid;
+  place-items: center;
 }
 
 /* Cart item — lines on the order slip */
