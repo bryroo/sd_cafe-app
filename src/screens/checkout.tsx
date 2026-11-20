@@ -22,7 +22,7 @@ import { Button, Loader, TextField } from '../components/ui'
 import { Icon } from '../components/Icon'
 import { Lamp } from '../components/Lamp'
 import { peso } from '../data/menu'
-import { offerHint } from '../data/rewards'
+import { offerHint, rewardById, rewardSavings } from '../data/rewards'
 import {
   FREE_DRINK_THRESHOLD,
   useApp,
@@ -264,6 +264,11 @@ export function Checkout() {
   const address = addresses.find((a) => a.id === addressId)
   const blocked = !open.open || unavailableLines.length > 0
   const hint = offerHint(cart)
+  // A voucher picked for this order that this cart doesn't qualify for yet: say what it needs
+  const held = app.myRewards.some((m) => m.rewardId === app.appliedReward && m.status === 'Redeemed')
+  const waiting = !reward && held && app.appliedReward ? rewardById(app.appliedReward) : undefined
+  const fit = waiting ? rewardSavings(waiting, cart) : undefined
+  const waitingNeeds = fit && !fit.applies ? fit.missing : undefined
 
   if (cart.length === 0 && !processing) return <EmptyCart />
 
@@ -459,6 +464,21 @@ export function Checkout() {
                 </p>
               )}
             </Row>
+            {waiting && (
+              <Row>
+                <Alert
+                  tone="info"
+                  icon="tag"
+                  action={
+                    <button className="t-body-sm link-text review__remove" onClick={() => app.setAppliedReward(null)}>
+                      Remove
+                    </button>
+                  }
+                >
+                  {waiting.name} voucher is ready. {waitingNeeds ? `Add ${waitingNeeds} to use it.` : ''}
+                </Alert>
+              </Row>
+            )}
             {reward && (
               <Row>
                 <Alert
