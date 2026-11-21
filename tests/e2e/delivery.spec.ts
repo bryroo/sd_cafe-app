@@ -88,8 +88,9 @@ test('pin by tapping the map, then save the address', async ({ page }) => {
   await page.locator('#ad-line').fill('E2E 1 Tap St')
   await page.getByRole('button', { name: 'Save address' }).click()
   await page.waitForURL((u) => !u.hash.startsWith('#/address'))
-  const row = psql("select barangay, city, round(lat::numeric, 4), round(lng::numeric, 4), location_set_at is not null from public.address where street = 'E2E 1 Tap St'")
-  expect(row).toBe('Poblacion|Bocaue|14.7980|120.9260|t')
+  // The pin is where the map was tapped (its centre, the centre of Bocaue), give or take a pixel
+  const row = psql("select barangay, city, abs(lat - 14.798) < 0.0005 and abs(lng - 120.926) < 0.0005, location_set_at is not null from public.address where street = 'E2E 1 Tap St'")
+  expect(row).toBe('Poblacion|Bocaue|t|t')
 })
 
 test('drag the pin; geocoding waits for it to settle; outside Bocaue shows coming soon', async ({ page }) => {
