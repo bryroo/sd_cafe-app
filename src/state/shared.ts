@@ -32,12 +32,24 @@ export type Address = {
   id: string
   label: 'Home' | 'Work' | 'Other'
   name: string
-  /** "House no., street, barangay, city" */
+  /** "House no., street, barangay, city" (display line) */
   street: string
   phone: string
   notes?: string
   isDefault?: boolean
+  /** The parts, as saved (addresses from the map form keep them separately) */
+  line?: string
+  barangay?: string
+  city?: string
+  landmark?: string
+  /** The customer's pin (WGS 84): the source of truth for delivery. Old addresses have none. */
+  lat?: number
+  lng?: number
+  placeId?: string
 }
+
+/** Delivery needs a pin; the server checks that the pin is inside the service area */
+export const isPinned = (a?: Address) => a?.lat != null && a?.lng != null
 
 export type Fulfillment = 'pickup' | 'delivery'
 
@@ -314,7 +326,20 @@ const CANCEL_CODES: Record<string, string> = {
   'payment issue': 'payment_issue',
 }
 
-type AddressJson = { label?: string; recipient_name?: string; street?: string; barangay?: string; city?: string; mobile_no?: string | null; notes?: string | null; removed?: boolean }
+type AddressJson = {
+  label?: string
+  recipient_name?: string
+  street?: string
+  barangay?: string
+  city?: string
+  landmark?: string | null
+  mobile_no?: string | null
+  notes?: string | null
+  lat?: number | null
+  lng?: number | null
+  place_id?: string | null
+  removed?: boolean
+}
 
 const joinStreet = (a: AddressJson) => [a.street, a.barangay, a.city].filter((x) => x && x !== '—').join(', ')
 
@@ -327,6 +352,13 @@ function toAddress(id: string, a: AddressJson, isDefault?: boolean): Address {
     phone: a.mobile_no ? toIntlPhone(a.mobile_no) : '',
     notes: a.notes ?? undefined,
     isDefault,
+    line: a.removed ? undefined : a.street,
+    barangay: a.removed || a.barangay === '—' ? undefined : a.barangay,
+    city: a.removed || a.city === '—' ? undefined : a.city,
+    landmark: a.landmark ?? undefined,
+    lat: a.removed ? undefined : (a.lat ?? undefined),
+    lng: a.removed ? undefined : (a.lng ?? undefined),
+    placeId: a.place_id ?? undefined,
   }
 }
 
@@ -514,7 +546,7 @@ let state: Shared = (() => {
   const base = empty()
   try {
     const saved = localStorage.getItem(CACHE())
-    if (saved) return { ...base, ...(JSON.parse(saved) as Partial<Shared>), ready: false }
+    if (saved) return { ...base, ...(JSON.parse(saved) as Partial<Shared>), addresses: [], ready: false }
   } catch {
     /* unreadable copy */
   }
@@ -553,8 +585,10 @@ export function useShared() {
 
 function remember() {
   try {
-    const { ready: _ready, ...rest } = state
+    // Saved addresses are never mirrored to the device (they're personal and only needed online)
+    const { ready: _ready, addresses: _addresses, ...rest } = state
     void _ready
+    void _addresses
     localStorage.setItem(CACHE(), JSON.stringify(rest))
   } catch {
     /* storage full or blocked */
@@ -806,7 +840,8 @@ export const failNextWrite = () => {
 
 /** Turns a database or network error into the sentence the person sees */
 function problem(error: { message?: string } | null | undefined, fallback = "Couldn't update. Try again."): Error {
-  const msg = error?.message ?? ''
+  // Rule codes (OUT_OF_SERVICE_AREA: …) are for the app to branch on; people get the sentence after them
+  const msg = (error?.message ?? '').replace(/^[A-Z_]+: /, '')
   // No connection: say so. Nothing is queued; the person retries once they're back online.
   if (typeof navigator !== 'undefined' && !navigator.onLine) return new Error("You're offline. Connect and try again.")
   // Messages raised by the database rules are written for people; anything technical gets the fallback
@@ -956,7 +991,10 @@ export async function saveProfile(patch: Partial<{ full_name: string; email: str
 export async function saveAddress(a: Address) {
   const uid = state.customer?.id
   if (!uid) throw new Error('Log in first.')
-  const parts = splitStreet(a.street)
+  // The map form sends the parts and the pin; the database refuses a pin outside the service area
+  const parts = a.barangay
+    ? { street: (a.line ?? '').trim(), barangay: a.barangay.trim(), city: (a.city ?? 'Bocaue').trim() }
+    : splitStreet(a.street)
   const row = {
     customer_id: uid,
     label: a.label,
@@ -964,12 +1002,25 @@ export async function saveAddress(a: Address) {
     ...parts,
     mobile_no: a.phone ? toE164(a.phone) : null,
     notes: a.notes?.trim() || null,
+    ...(a.lat != null && a.lng != null
+      ? { lat: a.lat, lng: a.lng, landmark: a.landmark?.trim() || null, place_id: a.placeId ?? null }
+      : {}),
   }
   const exists = state.addresses.some((x) => x.id === a.id)
   const data = await write(() =>
     exists ? db().from('address').update(row).eq('address_id', a.id).select('address_id') : db().from('address').insert(row).select('address_id'),
   )
   return ((data as { address_id: string }[] | null)?.[0]?.address_id ?? a.id) as string
+}
+
+export async function deleteAddress(id: string) {
+  if (!state.customer?.id) throw new Error('Log in first.')
+  await write(() => db().from('address').delete().eq('address_id', id).select('address_id'), true)
+}
+
+export async function setDefaultAddress(id: string) {
+  if (!state.customer?.id) throw new Error('Log in first.')
+  await write(() => db().rpc('set_default_address', { p_address_id: id }))
 }
 
 export async function addPaymentMethod(last4: string, makeDefault: boolean) {

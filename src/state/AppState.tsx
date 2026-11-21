@@ -15,6 +15,8 @@ import {
   reloadShared,
   sampleLines,
   saveAddress as saveAddressRow,
+  deleteAddress as deleteAddressRow,
+  setDefaultAddress as setDefaultAddressRow,
   saveProfile,
   setPoints,
   toIntlPhone,
@@ -112,6 +114,8 @@ type AppState = {
   addresses: Address[]
   /** Saves an address to the account; resolves to its id */
   saveAddress: (a: Address) => Promise<string>
+  deleteAddress: (id: string) => Promise<void>
+  setDefaultAddress: (id: string) => Promise<void>
   addressId: string
   setAddressId: (id: string) => void
   payment: string
@@ -451,6 +455,8 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
         const id = await saveAddressRow(a)
         return id
       },
+      deleteAddress: deleteAddressRow,
+      setDefaultAddress: setDefaultAddressRow,
       addressId,
       setAddressId,
       payment,
