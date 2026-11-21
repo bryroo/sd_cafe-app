@@ -1,6 +1,6 @@
 // Flow 3 — Cart, pickup or delivery, checkout (C-14, C-32, C-33, C-15, C-16)
 import { useRef, useState } from 'react'
-import { useNavigate, useParams, useSearchParams } from 'react-router-dom'
+import { useNavigate, useSearchParams } from 'react-router-dom'
 import { Content, Row, Screen, TopBar } from '../components/Screen'
 import { useMedia } from '../state/media'
 import { EmptyState, SwipeRow, TextArea } from '../components/blocks'
@@ -18,7 +18,7 @@ import {
   lineName,
 } from '../components/order'
 import { etaLine, type CartLine } from '../state/shared'
-import { Button, Loader, TextField } from '../components/ui'
+import { Button, Loader } from '../components/ui'
 import { Icon } from '../components/Icon'
 import { Lamp } from '../components/Lamp'
 import { peso } from '../data/menu'
@@ -26,10 +26,8 @@ import { offerHint, rewardById, rewardSavings } from '../data/rewards'
 import {
   FREE_DRINK_THRESHOLD,
   useApp,
-  type Address,
 } from '../state/AppState'
 import { useOverlay } from '../overlays/OverlayHost'
-import { useValidation } from '../state/forms'
 import './checkout.css'
 
 /** Totals for the current cart, fulfillment and discount choice. */
@@ -111,130 +109,6 @@ export function PickupOrDelivery() {
         )}
         <Row>
           <FulfillmentDetails type={fulfillment} address={address} />
-        </Row>
-      </Content>
-    </Screen>
-  )
-}
-
-/** C-33 Delivery Address — add (`/address/new`) or edit (`/address/:id`). */
-export function DeliveryAddress() {
-  const { id = 'new' } = useParams()
-  const navigate = useNavigate()
-  const { addresses, saveAddress, setAddressId, name, phone } = useApp()
-  const existing = addresses.find((a) => a.id === id)
-
-  const [recipient, setRecipient] = useState(existing?.name ?? '')
-  const [mobile, setMobile] = useState(existing?.phone ?? '')
-  const [street, setStreet] = useState(existing?.street ?? '')
-  const [landmark, setLandmark] = useState('')
-  const [notes, setNotes] = useState(existing?.notes ?? '')
-  const [more, setMore] = useState(!!existing?.notes)
-  const [busy, setBusy] = useState(false)
-  const [error, setError] = useState('')
-  const v = useValidation(
-    {
-      recipient: recipient.trim() ? undefined : "Enter the name of the person receiving the order.",
-      mobile: mobile.replace(/\D/g, '').length >= 10 ? undefined : 'Enter a mobile number the rider can call, like 0917 123 4567.',
-      street: street.trim() ? undefined : 'Enter the house number, street, barangay and city.',
-    },
-    (k) => `ad-${k}`,
-  )
-
-  // The order is delivered to an address saved on the account (the server reads it when ordering)
-  const submit = async () => {
-    if (!v.check()) return
-    const a: Address = {
-      id: existing?.id ?? `addr-${Date.now()}`,
-      label: existing?.label ?? 'Other',
-      name: recipient.trim(),
-      phone: mobile.trim(),
-      street: [landmark.trim(), street.trim()].filter(Boolean).join(', '),
-      notes: notes.trim() || undefined,
-      isDefault: existing?.isDefault,
-    }
-    setBusy(true)
-    setError('')
-    try {
-      const savedId = await saveAddress(a)
-      setAddressId(savedId)
-      navigate(-1)
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Couldn't save the address. Try again.")
-    } finally {
-      setBusy(false)
-    }
-  }
-
-  return (
-    <Screen topBar={<TopBar title="Delivery address" />}>
-      <Content>
-        <Row>
-          <div className="address-form">
-            <TextField
-              id="ad-recipient"
-              label="Recipient name"
-              placeholder={name}
-              value={recipient}
-              error={v.err('recipient')}
-              onBlur={() => v.touch('recipient')}
-              onChange={(e) => setRecipient(e.target.value)}
-              autoComplete="name"
-            />
-            <TextField
-              id="ad-mobile"
-              label="Mobile number"
-              placeholder={phone}
-              inputMode="tel"
-              value={mobile}
-              error={v.err('mobile')}
-              onBlur={() => v.touch('mobile')}
-              onChange={(e) => setMobile(e.target.value)}
-              autoComplete="tel"
-            />
-            <TextField
-              id="ad-street"
-              label="Street address"
-              placeholder="House no., street, barangay, city"
-              value={street}
-              error={v.err('street')}
-              onBlur={() => v.touch('street')}
-              onChange={(e) => setStreet(e.target.value)}
-              autoComplete="street-address"
-            />
-            {more ? (
-              <>
-                <TextField
-                  label="Building, unit or landmark (optional)"
-                  placeholder="e.g. Unit 8B, near the church"
-                  value={landmark}
-                  onChange={(e) => setLandmark(e.target.value)}
-                />
-                <TextArea
-                  label="Delivery notes (optional)"
-                  placeholder="e.g. Leave at the door"
-                  value={notes}
-                  onChange={setNotes}
-                />
-              </>
-            ) : (
-              <div>
-                <Button variant="text" height={48} full={false} icon={<Icon name="plus" size={20} />} onClick={() => setMore(true)}>
-                  Add unit, landmark or delivery notes
-                </Button>
-              </div>
-            )}
-            <p className="t-body-sm muted">Saved to your addresses, so you can pick it again next time.</p>
-            {error && <Alert tone="danger">{error}</Alert>}
-            <Button disabled={busy} onClick={submit} aria-busy={busy}>
-              {busy ? 'Saving…' : 'Save address'}
-            </Button>
-          </div>
-        </Row>
-        <Row>
-          <p className="t-caption muted">
-            Address entry is a placeholder form. It is replaced by the maps / address provider SDK.
-          </p>
         </Row>
       </Content>
     </Screen>

@@ -1,0 +1,152 @@
+/* Map / Pin picker and pin preview. Tokens only. */
+
+.map-picker { display: flex; flex-direction: column; gap: var(--space-12); min-height: 0; flex: 1 0 auto; }
+
+.map-picker__canvas {
+  position: relative;
+  flex: 1 0 auto;
+  min-height: 320px;
+  border-radius: var(--radius-card);
+  border: 1px solid var(--border);
+  overflow: hidden;
+  background: var(--raised);
+  /* The map owns every gesture inside it (one-finger pan); the page doesn't scroll from here */
+  touch-action: none;
+  overscroll-behavior: contain;
+}
+.map-picker__map { position: absolute; inset: 0; }
+.map-picker__map:focus-visible { outline: 2px solid var(--focus); outline-offset: -2px; }
+
+.map-picker__cover {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-8);
+  padding: var(--space-16);
+  background: var(--raised);
+  color: var(--muted);
+  text-align: center;
+}
+.map-picker__cover--problem { align-items: stretch; text-align: left; color: var(--ink); }
+
+.map-picker__locate {
+  position: absolute;
+  left: var(--space-12);
+  bottom: var(--space-24);
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-8);
+  min-height: 44px;
+  padding: 0 var(--space-16);
+  border-radius: var(--radius-pill);
+  border: 1px solid var(--border);
+  background: var(--surface);
+  color: var(--ink);
+  box-shadow: var(--elevation-2);
+  cursor: pointer;
+}
+.map-picker__locate:disabled { opacity: 0.7; cursor: progress; }
+
+.map-picker__credit { margin: 0; }
+.map-picker__credit a { color: inherit; }
+
+/* The pin: a lit lamp-gold head with a dark ring; a grab hand says it can be dragged */
+.map-pin { cursor: grab; transform: translateY(4px); filter: drop-shadow(0 2px 2px rgb(0 0 0 / 0.35)); }
+.map-pin:active { cursor: grabbing; }
+.map-pin path { fill: var(--gold); stroke: var(--plate); stroke-width: 2; }
+.map-pin circle { fill: var(--plate); }
+
+/* Search */
+.place-search { position: relative; display: flex; flex-direction: column; gap: var(--space-4); }
+.place-search__input { display: flex; align-items: center; gap: var(--space-8); padding-left: var(--space-12); }
+.place-search__input input { flex: 1 0 0; min-width: 0; border: 0; background: transparent; color: var(--ink); height: 52px; }
+.place-search__input input:focus { outline: none; }
+.place-search__input:focus-within { outline: 2px solid var(--focus); outline-offset: 1px; }
+.place-search__list {
+  position: absolute;
+  top: calc(100% - var(--space-16));
+  left: 0;
+  right: 0;
+  z-index: 5;
+  margin: 0;
+  padding: var(--space-4) 0;
+  list-style: none;
+  box-shadow: var(--elevation-2);
+  background: var(--surface);
+}
+.place-search__list li {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-height: 44px;
+  justify-content: center;
+  padding: var(--space-8) var(--space-16);
+  cursor: pointer;
+}
+.place-search__list li:hover,
+.place-search__list li.is-active { background: var(--active); }
+.place-search p { margin: 0; min-height: var(--lh-caption); }
+
+/* Eligibility panel under the map */
+.pin-status { display: flex; flex-direction: column; gap: var(--space-12); }
+.pin-status__line { display: flex; align-items: flex-start; gap: var(--space-8); }
+.pin-status__line .icon { flex: none; margin-top: 2px; }
+.pin-status--ok .pin-status__line { color: var(--positive); }
+.pin-status__address { color: var(--ink); }
+
+.coming-soon {
+  display: flex;
+  gap: var(--space-16);
+  align-items: flex-start;
+  padding: var(--space-16);
+  border-radius: var(--radius-card);
+  background: var(--surface);
+  border: 1px solid var(--border);
+}
+.coming-soon .illustration { flex: none; color: var(--muted); }
+.coming-soon__body { display: flex; flex-direction: column; gap: var(--space-8); min-width: 0; }
+.coming-soon__body h2, .coming-soon__body p { margin: 0; }
+
+/* Pin step: the map takes the screen's height; the panel and the button stay visible */
+.pin-step { display: flex; flex-direction: column; gap: var(--space-12); min-height: calc(100dvh - 260px); }
+@media (min-width: 768px) {
+  .pin-step { min-height: 560px; }
+}
+
+/* Preview (SVG, no tiles) */
+.pin-preview { margin: 0; display: flex; flex-direction: column; gap: var(--space-4); }
+.pin-preview svg, .pin-preview__blank {
+  display: block;
+  width: 100%;
+  max-width: 320px;
+  aspect-ratio: 1 / 1;
+  height: auto;
+  border-radius: var(--radius-card);
+  background: var(--raised);
+}
+.pin-preview svg { aspect-ratio: auto; }
+.pin-preview__area { fill: var(--gold); fill-opacity: 0.08; stroke: var(--gold-ink); stroke-width: 1.5; stroke-linejoin: round; }
+.pin-preview__halo { fill: var(--gold); fill-opacity: 0.25; }
+.pin-preview__pin { fill: var(--gold); stroke: var(--plate); stroke-width: 1.5; }
+
+.address-pin-summary { display: flex; flex-direction: column; gap: var(--space-12); }
+.address-pin-summary .pin-preview svg { max-width: 200px; }
+.label-choice { display: flex; gap: var(--space-8); flex-wrap: wrap; border: 0; padding: 0; margin: 0; }
+.label-choice legend { padding: 0; margin-bottom: var(--space-8); }
+
+/* Select in the standard field frame (barangay) */
+.field__input select {
+  flex: 1 0 0;
+  min-width: 0;
+  height: 100%;
+  border: 0;
+  outline: 0;
+  background: transparent;
+  color: var(--ink);
+  font: inherit;
+}
+.field__input:has(select:focus-visible) { outline: 2px solid var(--focus); outline-offset: 1px; }
+.field--error .field__input:has(select) { border: 1.5px solid var(--negative); }

@@ -1,4 +1,4 @@
-import type { ReactNode } from 'react'
+import { lazy, Suspense, type ReactNode } from 'react'
 import { Navigate } from 'react-router-dom'
 import { MemberOnly } from './components/guest'
 import type { useApp } from './state/AppState'
@@ -12,7 +12,9 @@ import {
   Welcome,
 } from './screens/account'
 import { Home, Menu, ProductDetail, Search, SectionList } from './screens/shop'
-import { Checkout, DeliveryAddress, OrderConfirmation, PickupOrDelivery } from './screens/checkout'
+import { Checkout, OrderConfirmation, PickupOrDelivery } from './screens/checkout'
+// Its own chunk: Google Maps code only loads for people who open the address screen
+const DeliveryAddress = lazy(() => import('./screens/address').then((m) => ({ default: m.DeliveryAddress })))
 import type { OverlayId } from './overlays/OverlayHost'
 import { OrderDetail, OrderTracking, Orders } from './screens/orders'
 import {
@@ -99,7 +101,7 @@ export const routes: RouteDef[] = [
   // Cart and checkout are one review screen; both addresses keep working
   { path: '/cart', element: <MemberOnly title="Your order" reason="Log in to start an order." illustration="cup"><Checkout /></MemberOnly> },
   { path: '/fulfillment', element: <MemberOnly title="Pickup or delivery" reason="Log in to start an order." illustration="cup"><PickupOrDelivery /></MemberOnly> },
-  { path: '/address/:id', element: <MemberOnly title="Delivery address" reason="Log in to save delivery addresses." illustration="lost"><DeliveryAddress /></MemberOnly> },
+  { path: '/address/:id', element: <MemberOnly title="Delivery address" reason="Log in to save delivery addresses." illustration="lost"><Suspense fallback={null}><DeliveryAddress /></Suspense></MemberOnly> },
   { path: '/checkout', element: <MemberOnly title="Your order" reason="Log in to start an order." illustration="cup"><Checkout /></MemberOnly> },
   { path: '/order-confirmation', element: <MemberOnly title="Order" reason="Log in to see your orders." illustration="receipt"><OrderConfirmation /></MemberOnly> },
   // Flow 4
