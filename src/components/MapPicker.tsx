@@ -87,6 +87,7 @@ export function MapPicker({
   const [attempt, setAttempt] = useState(0)
   const [locating, setLocating] = useState(false)
   const [locateError, setLocateError] = useState('')
+  const [lookupNote, setLookupNote] = useState('')
   // Latest callbacks without re-running the map setup
   const cb = useRef({ onPin, onGeocoded })
   cb.current = { onPin, onGeocoded }
@@ -102,9 +103,20 @@ export function MapPicker({
       if (!g) return
       try {
         const { results } = await new g.Geocoder().geocode({ location: p })
-        if (seq === geocodeSeq.current) cb.current.onGeocoded(readGeocode(results))
-      } catch {
-        if (seq === geocodeSeq.current) cb.current.onGeocoded(null)
+        if (seq !== geocodeSeq.current) return
+        const found = readGeocode(results)
+        cb.current.onGeocoded(found)
+        setLookupNote(found ? '' : "We couldn't find a street name for this spot. Type it in the next step.")
+      } catch (e) {
+        if (seq !== geocodeSeq.current) return
+        cb.current.onGeocoded(null)
+        // ZERO_RESULTS is an empty answer; anything else (REQUEST_DENIED: key, billing or quota) is Google refusing
+        const code = (e as { code?: string })?.code
+        setLookupNote(
+          code === 'ZERO_RESULTS'
+            ? "We couldn't find a street name for this spot. Type it in the next step."
+            : "Google couldn't look up this spot's street right now. Your pin is saved as placed; type the street in the next step.",
+        )
       }
     }, wait)
   }, [])
@@ -290,6 +302,7 @@ export function MapPicker({
           {locateError}
         </Alert>
       )}
+      {lookupNote && <p className="t-caption muted" role="status">{lookupNote}</p>}
       <p className="t-caption muted map-picker__credit">
         Delivery area outline ©{' '}
         <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noreferrer">

@@ -12,7 +12,8 @@
     "test:db": "npx supabase test db supabase/tests/database",
     "coverage": "vitest run --coverage --coverage.include=supabase/functions/_shared/pricing.ts",
     "test:e2e": "playwright test",
-    "test:a11y": "node tests/e2e/lighthouse-a11y.mjs"
+    "test:a11y": "node tests/e2e/lighthouse-a11y.mjs",
+    "test:maps-live": "node tests/e2e/maps-live-check.mjs"
   },
   "dependencies": {
     "@googlemaps/js-api-loader": "2.1.3",
