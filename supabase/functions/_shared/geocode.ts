@@ -1,8 +1,9 @@
-// Address lookups with OpenStreetMap Nominatim (https://nominatim.org), used by the `geocode` Edge
-// Function. Pure helpers here (tested by geocode.test.ts); the function adds auth, limits and the cache.
-// Nominatim's usage policy: at most 1 request per second for the whole app, an identifying User-Agent,
-// cache the answers, show "© OpenStreetMap contributors", and no search-as-you-type (searches run when
-// the person submits them).
+// Address lookups with OpenStreetMap Nominatim (https://nominatim.org): request URLs, input checks and the
+// answer's shape. Pure helpers (tested by geocode.test.ts), used by the app (src/lib/geocode.ts), which
+// calls Nominatim from the browser: Nominatim refuses Supabase's cloud servers (403). Kept here so a server
+// caller can share them again if lookups ever move behind a keyed provider.
+// Nominatim's usage policy: at most 1 request per second, identify the app, cache the answers, show
+// "© OpenStreetMap contributors", and no search-as-you-type (searches run when the person submits them).
 
 export const NOMINATIM = 'https://nominatim.openstreetmap.org'
 

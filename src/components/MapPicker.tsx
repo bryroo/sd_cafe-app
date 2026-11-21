@@ -1,8 +1,9 @@
 // Map / Pin picker (Leaflet + OpenStreetMap): the customer puts the pin on their exact door.
 //   * tap or click the map to drop the pin; drag it to adjust. The pin is keyboard-operable: Tab to it,
 //     then the arrow keys move it (Shift moves it further)
-//   * address search (OpenStreetMap Nominatim through the `geocode` Edge Function). It runs when the person
-//     presses Search, never while typing: Nominatim's usage policy forbids search-as-you-type
+//   * address search (OpenStreetMap Nominatim, called from the browser: src/lib/geocode.ts). It runs when the
+//     person presses Search, never while typing: Nominatim's usage policy forbids search-as-you-type.
+//     Pins outside the delivery area are never looked up.
 //   * Use my current location (browser Geolocation); zoom buttons; the delivery area is outlined
 // Pin moves are reported straight away. The address text from the reverse lookup follows ~600 ms after
 // a tap or drag settles (at once for a search or the current location). The pin is the source of truth;
@@ -12,7 +13,8 @@ import { useCallback, useEffect, useId, useRef, useState } from 'react'
 import L from 'leaflet'
 import 'leaflet/dist/leaflet.css'
 import { reversePlace, searchPlaces, type GeoPlace } from '../lib/geocode'
-import type { ServiceArea } from '../state/serviceArea'
+import type { Bounds } from '../../supabase/functions/_shared/geocode'
+import { coversPoint, type ServiceArea } from '../state/serviceArea'
 import { useOnline } from '../state/online'
 import { BOCAUE_CENTER, matchBarangay } from '../data/bocaue'
 import { Alert } from './order'
@@ -25,6 +27,8 @@ export type PinSource = 'tap' | 'drag' | 'search' | 'locate'
 /** What OpenStreetMap says is near the pin (a suggestion; the person can change it) */
 export type Geocoded = { line?: string; barangay?: string; town?: string; formatted?: string; placeId?: string }
 
+// Search box before the outline has loaded (the outline's own box replaces it)
+const BOCAUE_BOUNDS: Bounds = { north: 14.8445, south: 14.7632, east: 120.9612, west: 120.9059 }
 const TILES = 'https://tile.openstreetmap.org/{z}/{x}/{y}.png'
 const OSM_CREDIT = '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
 const PIN_SVG =
@@ -73,8 +77,8 @@ export function MapPicker({
   const [lookup, setLookup] = useState<'idle' | 'loading' | 'waiting'>('idle')
   const lookupAbort = useRef<AbortController | null>(null)
   // Latest callbacks without rebuilding the map
-  const cb = useRef({ onPin, onGeocoded, lookupSignal })
-  cb.current = { onPin, onGeocoded, lookupSignal }
+  const cb = useRef({ onPin, onGeocoded, lookupSignal, area })
+  cb.current = { onPin, onGeocoded, lookupSignal, area }
 
   // Reverse lookup once the pin has settled (taps and drags come in bursts; a search result or the
   // current location is one answer, so it goes at once). Busy servers or a dropped connection only make
@@ -91,8 +95,15 @@ export function MapPicker({
       outer.addEventListener('abort', () => ctrl.abort(), { once: true })
     }
     const seq = ++geocodeSeq.current
-    setLookup('loading')
     setLookupNote('')
+    // Pins we can't deliver to need no street: nothing is sent to Nominatim for them
+    const a = cb.current.area
+    if (a && !coversPoint(a, p.lat, p.lng)) {
+      setLookup('idle')
+      cb.current.onGeocoded(null)
+      return
+    }
+    setLookup('loading')
     geocodeTimer.current = window.setTimeout(async () => {
       const r = await reversePlace(p.lat, p.lng, { signal: ctrl.signal, onWaiting: () => seq === geocodeSeq.current && setLookup('waiting') })
       if (!r || seq !== geocodeSeq.current) return
@@ -280,6 +291,7 @@ export function MapPicker({
   return (
     <div className="map-picker">
       <PlaceSearch
+        bounds={area?.bounds ?? BOCAUE_BOUNDS}
         onPick={(p) => {
           map.current?.setView(p, 18)
           place({ lat: p.lat, lng: p.lng }, 'search', p.osmId)
@@ -327,7 +339,7 @@ export function MapPicker({
 
 /** Address search: runs on Search or Enter (Nominatim's policy rules out search-as-you-type). Results are
  *  a plain list of buttons, so keyboards and screen readers need nothing special. */
-function PlaceSearch({ onPick }: { onPick: (p: GeoPlace) => void }) {
+function PlaceSearch({ bounds, onPick }: { bounds: Bounds; onPick: (p: GeoPlace) => void }) {
   const id = useId()
   const [q, setQ] = useState('')
   const [busy, setBusy] = useState(false)
@@ -352,7 +364,7 @@ function PlaceSearch({ onPick }: { onPick: (p: GeoPlace) => void }) {
     setBusy(true)
     setResults(null)
     setNote('')
-    const r = await searchPlaces(text, {
+    const r = await searchPlaces(text, bounds, {
       signal: ctrl.signal,
       onWaiting: () =>
         setNote(navigator.onLine ? 'The address service is busy. Still searching…' : "You're offline. Searching as soon as you're connected…"),

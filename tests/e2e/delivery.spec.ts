@@ -1,5 +1,5 @@
 // Delivery: pinning on the map (Leaflet + OpenStreetMap), the in-area answer, coming soon, failures,
-// keyboard-only, layouts, accessibility. OSM tiles and the geocode function are mocked (osm-mock.ts).
+// keyboard-only, layouts, accessibility. OSM tiles and Nominatim are mocked (osm-mock.ts).
 // Signs in as the demo customer Maria; test addresses use streets starting with "E2E" and are removed after.
 import AxeBuilder from '@axe-core/playwright'
 import { expect, test, type Page } from '@playwright/test'
@@ -71,7 +71,7 @@ test('guests and the catalog never load the map or call address lookup', async (
     await page.waitForLoadState('networkidle')
   }
   expect(osmCalls).toEqual([])
-  expect(scripts.some((s) => s.includes('tile.openstreetmap.org'))).toBe(false)
+  expect(scripts.some((s) => s.includes('tile.openstreetmap.org') || s.includes('nominatim.openstreetmap.org'))).toBe(false)
   await expect(page.getByText('Log in to save delivery addresses.')).toBeVisible()
 })
 

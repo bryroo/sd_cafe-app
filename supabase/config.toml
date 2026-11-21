@@ -440,6 +440,3 @@ verify_jwt = false
 [functions.sign-in]
 verify_jwt = false
 
-# Address search and pin lookup (OpenStreetMap Nominatim), signed-in customers only
-[functions.geocode]
-verify_jwt = false

@@ -477,6 +477,11 @@ export function Privacy() {
               if you agree below, for offers. We don't sell it.
             </p>
             <p className="t-body">
+              When you pin a delivery address, the map pictures and address search come from OpenStreetMap. Your phone sends
+              them the area you're viewing, what you search for and where your pin is (inside Bocaue), along with your
+              internet address, as any website visit does. Your name, mobile number and account are never sent.
+            </p>
+            <p className="t-body">
               Under the Data Privacy Act of 2012 (Republic Act No. 10173) you can see the data we hold, have it corrected,
               withdraw consent and ask us to delete it. Ask at the counter or use the options below.
             </p>
