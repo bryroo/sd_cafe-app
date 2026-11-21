@@ -69,7 +69,7 @@ export async function createAutomatedOrder(
       ? await db.from('address').select('*').eq('customer_id', a.customer_id).order('is_default', { ascending: false }).limit(1).maybeSingle()
       : { data: null }
     address = data
-      ? { label: data.label, recipient_name: data.recipient_name, street: data.street, barangay: data.barangay, city: data.city, mobile_no: data.mobile_no, notes: data.notes }
+      ? { label: data.label, recipient_name: data.recipient_name, street: data.street, barangay: data.barangay, city: data.city, landmark: data.landmark, mobile_no: data.mobile_no, notes: data.notes, lat: data.lat, lng: data.lng }
       : { label: 'Work', recipient_name: a.customer_name, street: a.rule, barangay: '—', city: '—' }
   }
 

@@ -28,7 +28,8 @@ Deno.serve(async (req) => {
 
   // 1. Who: a signed-in customer (FR-ACC-01: guests sign in before checkout)
   const user = await caller(req, db)
-  if (!user) return fail('SIGN_IN', 'Sign in to place your order.', 401)
+  // Anonymous Auth sessions are guests too, even if anonymous sign-in is ever turned on
+  if (!user || user.is_anonymous) return fail('SIGN_IN', 'Sign in to place your order.', 401)
   const { data: customer } = await db
     .from('customer')
     .select('customer_id, full_name, mobile_no, tier_id')
@@ -76,20 +77,36 @@ Deno.serve(async (req) => {
     lines.push(r.line)
   }
 
-  // Delivery address: one of the customer's saved addresses (FR-CHK-02)
+  // Delivery address: one of the customer's saved addresses (FR-CHK-02), pinned inside a service area.
+  // The pin is read from the saved row and checked here; nothing about the location is taken from the body.
   let address: Record<string, unknown> | null = null
   if (body.fulfillment === 'delivery') {
-    if (!body.addressId) return fail('ADDRESS', 'Add a delivery address.')
+    if (typeof body.addressId !== 'string' || !UUID.test(body.addressId)) return fail('ADDRESS', 'Add a delivery address.')
     const { data: a } = await db.from('address').select('*').eq('address_id', body.addressId).eq('customer_id', user.id).maybeSingle()
     if (!a) return fail('ADDRESS', 'Add a delivery address.')
+    if (a.lat === null || a.lng === null)
+      return fail('ADDRESS_NEEDS_PIN', 'Pin this address on the map before ordering delivery. Update the app if you don\'t see the map.', 409)
+    const { data: inside, error: areaError } = await db.rpc('is_within_service_area', { p_lat: a.lat, p_lng: a.lng })
+    if (areaError) {
+      console.error('is_within_service_area failed', areaError)
+      return fail('ORDER_FAILED', "We couldn't check the delivery area. You haven't been charged. Try again.", 503)
+    }
+    if (inside !== true)
+      return fail('OUT_OF_AREA', 'We deliver within Bocaue only for now. Choose pickup or another address.', 409)
+    if (!a.mobile_no) return fail('ADDRESS', 'Add a mobile number the rider can call to this address.')
+    // A copy taken now, so later edits to the saved address never change this order
     address = {
       label: a.label,
       recipient_name: a.recipient_name,
       street: a.street,
       barangay: a.barangay,
       city: a.city,
+      landmark: a.landmark,
       mobile_no: a.mobile_no,
       notes: a.notes,
+      lat: a.lat,
+      lng: a.lng,
+      place_id: a.place_id,
     }
   }
 
@@ -223,6 +240,9 @@ Deno.serve(async (req) => {
     },
   })
   if (error) {
+    // The database's delivery guard (orders_delivery_guard) has the last word on the area
+    const guard = /^(OUT_OF_AREA|ADDRESS_NEEDS_PIN): (.*)$/.exec(error.message ?? '')
+    if (guard) return fail(guard[1], guard[2], 409)
     console.error('create_order failed', error)
     return fail('ORDER_FAILED', error.message || "We couldn't place your order. You haven't been charged.", 409)
   }
