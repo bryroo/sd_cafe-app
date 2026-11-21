@@ -4,6 +4,7 @@ import { useState } from 'react'
 import { useParams, useSearchParams } from 'react-router-dom'
 import { Icon } from '../components/Icon'
 import { Lamp } from '../components/Lamp'
+import { PinPreview } from '../components/PinPreview'
 import { PriceBreakdown, StatusBadge, formatOptions, lineName } from '../components/order'
 import { peso } from '../data/menu'
 import {
@@ -380,6 +381,14 @@ export function OrderDetail() {
           <Fact label={o.fulfillment === 'delivery' ? 'Deliver to' : 'Pickup'}>
             {o.fulfillment === 'delivery' && o.address ? `${o.address.name}, ${o.address.street}` : 'At the counter'}
           </Fact>
+          {o.fulfillment === 'delivery' && o.address && (o.address.phone || o.address.landmark || o.address.notes) && (
+            <Fact label="Rider notes">
+              {[o.address.phone, o.address.landmark && `Landmark: ${o.address.landmark}`, o.address.notes].filter(Boolean).join(' · ')}
+            </Fact>
+          )}
+          {o.fulfillment === 'delivery' && o.address?.lat != null && o.address.lng != null && (
+            <PinPreview lat={o.address.lat} lng={o.address.lng} label={`Delivery pin for order #${o.number}`} />
+          )}
           {o.status !== 'Completed' && o.status !== 'Cancelled' && <Fact label="Estimate">{etaLine(o)}</Fact>}
           {o.status === 'Cancelled' && (
             <Fact label="Cancelled">

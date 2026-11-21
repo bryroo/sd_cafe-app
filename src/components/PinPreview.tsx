@@ -1,7 +1,7 @@
 // A small, non-interactive picture of where the pin sits inside the delivery area: the area's outline
 // (OpenStreetMap) and the pin, drawn as SVG. No map tiles and no Google request, so it costs nothing and
 // works offline once the outline has loaded. "Open in Google Maps" is a plain link (no API key).
-import { mapsLink } from '../lib/maps'
+import { mapsLink } from '../lib/mapsLink'
 import { useServiceArea, type ServiceArea } from '../state/serviceArea'
 import './map.css'
 
