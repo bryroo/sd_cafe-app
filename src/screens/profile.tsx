@@ -746,7 +746,43 @@ export function AddPaymentMethod() {
 /** Saved addresses (linked from Profile; not drawn in Figma — reuses the address cards from C-32). */
 export function SavedAddresses() {
   const navigate = useNavigate()
-  const { addresses, addressId, setAddressId } = useApp()
+  const { addresses, addressId, setAddressId, deleteAddress, setDefaultAddress } = useApp()
+  const { toast } = useOverlay()
+  // Removed rows hide at once and are deleted after the Undo window (Undo, not "are you sure")
+  const [hidden, setHidden] = useState<Set<string>>(new Set())
+  const undone = useRef<Set<string>>(new Set())
+  const shown = addresses.filter((a) => !hidden.has(a.id))
+  const unhide = (id: string) =>
+    setHidden((h) => {
+      const n = new Set(h)
+      n.delete(id)
+      return n
+    })
+
+  const remove = (id: string, label: string) => {
+    undone.current.delete(id)
+    setHidden((h) => new Set(h).add(id))
+    toast(`Removed ${label} address`, {
+      label: 'Undo',
+      onClick: () => {
+        undone.current.add(id)
+        unhide(id)
+      },
+    })
+    window.setTimeout(() => {
+      if (undone.current.has(id)) return
+      deleteAddress(id).catch((err) => {
+        unhide(id)
+        toast(err instanceof Error ? err.message : "Couldn't remove the address. Try again.")
+      })
+    }, 5200)
+  }
+
+  const makeDefault = (id: string, label: string) =>
+    setDefaultAddress(id)
+      .then(() => toast(`${label} is your default address`))
+      .catch((err) => toast(err instanceof Error ? err.message : "Couldn't update. Try again."))
+
   return (
     <Screen
       footerBorder
@@ -758,13 +794,43 @@ export function SavedAddresses() {
       }
     >
       <Content>
-        {addresses.map((a) => (
+        {shown.length === 0 ? (
+          <EmptyState illustration="lost" title="No saved addresses">
+            We deliver within Bocaue, Bulacan. Add an address and pin it on the map to order delivery.
+          </EmptyState>
+        ) : (
+          shown.some((a) => a.lat == null) && (
+            <Row>
+              <Alert tone="info" icon="pin">
+                Addresses marked "Needs a pin" can't be used for delivery yet. Open one with Edit and pin it on the map.
+              </Alert>
+            </Row>
+          )
+        )}
+        {shown.map((a) => (
           <Row key={a.id}>
             <AddressCard
               address={a}
               selected={a.id === addressId}
               onSelect={() => setAddressId(a.id)}
               onEdit={() => navigate(`/address/${a.id}`)}
+              actions={
+                <>
+                  {!a.isDefault && (
+                    <button type="button" className="t-body-sm link-text address-card__action" onClick={() => makeDefault(a.id, a.label)}>
+                      Set as default
+                    </button>
+                  )}
+                  <button
+                    type="button"
+                    className="t-body-sm link-text address-card__action"
+                    aria-label={`Delete ${a.label} address`}
+                    onClick={() => remove(a.id, a.label)}
+                  >
+                    Delete
+                  </button>
+                </>
+              }
             />
           </Row>
         ))}

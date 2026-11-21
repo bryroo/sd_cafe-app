@@ -448,3 +448,13 @@ button.option-row:hover .option-row__label { text-decoration: underline; text-un
 /* The payment row when no method is chosen (FR-CHK-07) */
 .options-card--error { border-color: var(--negative); }
 .fulfillment-seg:disabled { opacity: 0.5; cursor: not-allowed; }
+
+/* Saved addresses: Set as default / Delete under the card */
+.address-card--actions { flex-wrap: wrap; }
+.address-card__actions {
+  flex: 1 0 100%;
+  display: flex;
+  gap: var(--space-8);
+  padding: 0 var(--space-16) var(--space-12) calc(var(--space-16) + 32px);
+}
+.address-card__action { min-height: 44px; padding: 0 var(--space-8); }

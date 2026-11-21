@@ -6,6 +6,7 @@ import { productById } from '../data/menu'
 import { ProductThumb, Stepper } from './blocks'
 import { Icon, type IconName } from './Icon'
 import { Lamp } from './Lamp'
+import { PinPreview } from './PinPreview'
 import './order.css'
 
 /** Before an order exists: pickup takes the cafe's default preparation time (FR-OPS-03) */
@@ -102,12 +103,16 @@ export function FulfillmentDetails({
           <span className="t-caption muted">Delivering to</span>
           <span className="t-h3">{address.name}</span>
           <span className="t-body-sm muted">{address.street}</span>
+          {address.landmark && <span className="t-body-sm muted">Landmark: {address.landmark}</span>}
           <span className="t-body-sm muted num">{address.phone}</span>
           {address.notes && (
             <span className="fulfillment-details__note t-body-sm">
               <Icon name="door" size={16} />
               {address.notes}
             </span>
+          )}
+          {address.lat != null && address.lng != null && (
+            <PinPreview lat={address.lat} lng={address.lng} label={`Delivery pin for ${address.name}`} />
           )}
         </div>
       ) : (
@@ -277,29 +282,35 @@ export function AddressCard({
   selected,
   onSelect,
   onEdit,
+  actions,
 }: {
   address: Address
   selected: boolean
   onSelect: () => void
   onEdit: () => void
+  /** Extra controls under the card (Saved addresses: Set as default, Delete) */
+  actions?: ReactNode
 }) {
+  const pinned = address.lat != null && address.lng != null
   return (
-    <div className={`card address-card ${selected ? 'is-selected' : ''}`}>
+    <div className={`card address-card ${selected ? 'is-selected' : ''} ${actions ? 'address-card--actions' : ''}`}>
       <button className="address-card__hit" role="radio" aria-checked={selected} onClick={onSelect}>
         <span className={`radio__ring ${selected ? 'is-checked' : ''}`} />
         <span className="address-card__body">
           <span className="address-card__tags">
             <span className="t-h3">{address.label}</span>
             {address.isDefault && <span className="tier-badge t-caption">Default</span>}
+            {!pinned && <span className="tier-badge t-caption">Needs a pin</span>}
           </span>
           <span className="t-body">{address.name}</span>
           <span className="t-body-sm muted">{address.street}</span>
           <span className="t-body-sm muted num">{address.phone}</span>
         </span>
       </button>
-      <button className="address-card__edit t-body-sm link-text" onClick={onEdit}>
+      <button className="address-card__edit t-body-sm link-text" onClick={onEdit} aria-label={`Edit ${address.label} address`}>
         Edit
       </button>
+      {actions && <div className="address-card__actions">{actions}</div>}
     </div>
   )
 }
