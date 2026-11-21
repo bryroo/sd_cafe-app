@@ -33,3 +33,8 @@ design/redesign.html
 
 # Test coverage reports (npm run coverage)
 coverage
+
+# Playwright (npx playwright test)
+dist-e2e
+test-results
+playwright-report
