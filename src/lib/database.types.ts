@@ -25,14 +25,14 @@ export type Database = {
           Tables: {
             "address": {
                   Row: {
-                    "address_id": string,"barangay": string,"city": string,"created_at": string,"customer_id": string,"is_default": boolean,"label": Database["public"]['Enums']["address_label"],"mobile_no": string | null,"notes": string | null,"recipient_name": string,"street": string,"updated_at": string
+                    "address_id": string,"barangay": string,"city": string,"created_at": string,"customer_id": string,"is_default": boolean,"label": Database["public"]['Enums']["address_label"],"landmark": string | null,"lat": number | null,"lng": number | null,"location_set_at": string | null,"mobile_no": string | null,"notes": string | null,"place_id": string | null,"recipient_name": string,"street": string,"updated_at": string
                   }
                   ComputedFields: never
                   Insert: {
-                    "address_id"?: string,"barangay": string,"city": string,"created_at"?: string,"customer_id": string,"is_default"?: boolean,"label"?: Database["public"]['Enums']["address_label"],"mobile_no"?: string | null,"notes"?: string | null,"recipient_name": string,"street": string,"updated_at"?: string
+                    "address_id"?: string,"barangay": string,"city": string,"created_at"?: string,"customer_id": string,"is_default"?: boolean,"label"?: Database["public"]['Enums']["address_label"],"landmark"?: string | null,"lat"?: number | null,"lng"?: number | null,"location_set_at"?: string | null,"mobile_no"?: string | null,"notes"?: string | null,"place_id"?: string | null,"recipient_name": string,"street": string,"updated_at"?: string
                   }
                   Update: {
-                    "address_id"?: string,"barangay"?: string,"city"?: string,"created_at"?: string,"customer_id"?: string,"is_default"?: boolean,"label"?: Database["public"]['Enums']["address_label"],"mobile_no"?: string | null,"notes"?: string | null,"recipient_name"?: string,"street"?: string,"updated_at"?: string
+                    "address_id"?: string,"barangay"?: string,"city"?: string,"created_at"?: string,"customer_id"?: string,"is_default"?: boolean,"label"?: Database["public"]['Enums']["address_label"],"landmark"?: string | null,"lat"?: number | null,"lng"?: number | null,"location_set_at"?: string | null,"mobile_no"?: string | null,"notes"?: string | null,"place_id"?: string | null,"recipient_name"?: string,"street"?: string,"updated_at"?: string
                   }
                   Relationships: [
                     {
@@ -585,6 +585,26 @@ isOneToOne: false
                   Relationships: [
                     
                   ]
+                },"service_area": {
+                  Row: {
+                    "boundary": unknown,"cafe_id": number,"created_at": string,"fetched_at": string,"is_active": boolean,"name": string,"service_area_id": number,"source": string,"source_license": string,"updated_at": string
+                  }
+                  ComputedFields: never
+                  Insert: {
+                    "boundary": unknown,"cafe_id": number,"created_at"?: string,"fetched_at": string,"is_active"?: boolean,"name": string,"service_area_id"?: never,"source": string,"source_license": string,"updated_at"?: string
+                  }
+                  Update: {
+                    "boundary"?: unknown,"cafe_id"?: number,"created_at"?: string,"fetched_at"?: string,"is_active"?: boolean,"name"?: string,"service_area_id"?: never,"source"?: string,"source_license"?: string,"updated_at"?: string
+                  }
+                  Relationships: [
+                    {
+      foreignKeyName: "service_area_cafe_id_fkey"
+      columns: ["cafe_id"]
+isOneToOne: false
+      referencedRelation: "store_settings"
+      referencedColumns: ["settings_id"]
+    }
+                  ]
                 },"staff_user": {
                   Row: {
                     "cafe_id": number,"created_at": string,"email": string | null,"full_name": string,"is_active": boolean,"role": Database["public"]['Enums']["staff_role"],"staff_id": string,"updated_at": string,"username": string
@@ -715,6 +735,9 @@ isOneToOne: false
 "is_staff":
 { Args: Record<PropertyKey, never>; Returns: boolean
                            },
+"is_within_service_area":
+{ Args: { "p_lat": number,"p_lng": number }; Returns: boolean
+                           },
 "login_failed":
 { Args: { "p_audience": Database["public"]['Enums']["login_audience"],"p_identifier": string }; Returns: Json
                            },
@@ -748,6 +771,12 @@ isOneToOne: false
       } },
 "render_template":
 { Args: { "p_body": string,"p_extra"?: Json,"p_order": Omit<Database["public"]['Tables']["orders"]['Row'], Database["public"]['Tables']["orders"]['ComputedFields']> }; Returns: string
+                           },
+"service_area_geojson":
+{ Args: Record<PropertyKey, never>; Returns: Json
+                           },
+"set_default_address":
+{ Args: { "p_address_id": string }; Returns: undefined
                            },
 "staff_login_address":
 { Args: { "p_identifier": string }; Returns: string
