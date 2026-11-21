@@ -8,7 +8,10 @@ const INK = '#141414'
    Only GET /rest/v1/<table> reads are handled. Everything else (Auth and token refresh, Edge Functions,
    RPCs, Storage, Realtime websockets, and every POST/PATCH/DELETE/HEAD) matches no route and goes
    straight to the network. Workbox serialises these functions into the worker, so each one must be
-   self-contained (no outside variables). */
+   self-contained (no outside variables).
+   Never cached either: saved delivery addresses (GET /rest/v1/address, personal and only needed online)
+   and anything from Google Maps (maps.googleapis.com, maps.gstatic.com, places.googleapis.com): no route
+   matches them, so the map needs the network and shows its offline message without it. */
 
 // These run inside the service worker (DOM types come from tsconfig.node.json)
 type SwMatch = { url: URL; request: Request }
@@ -16,6 +19,7 @@ type SwMatch = { url: URL; request: Request }
 /** A table read (GET /rest/v1/<table>, not an RPC) made by a signed-in user */
 const userRead = ({ url, request }: SwMatch) => {
   if (request.method !== 'GET' || !url.pathname.startsWith('/rest/v1/') || url.pathname.startsWith('/rest/v1/rpc/')) return false
+  if (url.pathname === '/rest/v1/address') return false
   try {
     const token = (request.headers.get('Authorization') ?? '').replace(/^Bearer\s+/i, '')
     const part = token.split('.')[1]
@@ -29,6 +33,7 @@ const userRead = ({ url, request }: SwMatch) => {
 /** The same reads made by a guest (catalog: menu, store hours, offers) */
 const guestRead = ({ url, request }: SwMatch) => {
   if (request.method !== 'GET' || !url.pathname.startsWith('/rest/v1/') || url.pathname.startsWith('/rest/v1/rpc/')) return false
+  if (url.pathname === '/rest/v1/address') return false
   try {
     const token = (request.headers.get('Authorization') ?? '').replace(/^Bearer\s+/i, '')
     const part = token.split('.')[1]
