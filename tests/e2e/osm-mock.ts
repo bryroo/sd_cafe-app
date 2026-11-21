@@ -15,7 +15,9 @@ const PLACES = [
   { ...MARILAO, label: 'Marilao Town Plaza, Poblacion I, Marilao, Bulacan, Philippines', line: 'Town Plaza', area: 'Poblacion I', town: 'Marilao', osmId: 'osm:N2' },
 ]
 
-export type OsmMode = { tiles?: 'ok' | 'fail'; lookup?: 'ok' | 'fail' | 'rate-limit' }
+/** busy-N: the first N tile requests or lookups fail as heavy traffic would (tiles dropped; lookups BUSY then
+ *  RATE_LIMIT with a short retryAfter), then everything works. fail: a real, non-retryable lookup failure. */
+export type OsmMode = { tiles?: 'ok' | 'fail' | `busy-${number}`; lookup?: 'ok' | 'fail' | `busy-${number}` }
 export type Lookup = { action: string; q?: string; lat?: number; lng?: number }
 
 /** Inside the delivery area, roughly (the real check is the server's) */
@@ -28,7 +30,9 @@ export async function mockOsm(page: Page, mode: OsmMode = {}) {
   await page.unroute('**/functions/v1/geocode').catch(() => {})
   await page.route('https://tile.openstreetmap.org/**', (route) => {
     tileRequests.push(route.request().url())
-    return mode.tiles === 'fail' ? route.abort('failed') : route.fulfill({ contentType: 'image/png', body: TILE })
+    const busyTiles = mode.tiles?.startsWith('busy-') ? Number(mode.tiles.slice(5)) : 0
+    if (mode.tiles === 'fail' || tileRequests.length <= busyTiles) return route.abort('failed')
+    return route.fulfill({ contentType: 'image/png', body: TILE })
   })
   await page.route('**/functions/v1/geocode', async (route) => {
     if (route.request().method() === 'OPTIONS') return route.fulfill({ status: 200, headers: { 'Access-Control-Allow-Origin': '*', 'Access-Control-Allow-Headers': '*' } })
@@ -37,8 +41,11 @@ export async function mockOsm(page: Page, mode: OsmMode = {}) {
     const headers = { 'Access-Control-Allow-Origin': '*' }
     if (mode.lookup === 'fail')
       return route.fulfill({ status: 502, headers, json: { error: { code: 'LOOKUP_FAILED', message: "Address lookup isn't working right now. Tap the map, or type the address." } } })
-    if (mode.lookup === 'rate-limit')
-      return route.fulfill({ status: 429, headers, json: { error: { code: 'RATE_LIMIT', message: 'Too many lookups. Wait a minute, or type the address yourself.' } } })
+    const busyLookups = mode.lookup?.startsWith('busy-') ? Number(mode.lookup.slice(5)) : 0
+    if (lookups.length <= busyLookups)
+      return lookups.length % 2
+        ? route.fulfill({ status: 503, headers, json: { error: { code: 'BUSY', message: 'Address lookup is busy. Still trying…', retryAfter: 0.4 } } })
+        : route.fulfill({ status: 429, headers, json: { error: { code: 'RATE_LIMIT', message: 'Lots of lookups from this account. Still trying…', retryAfter: 0.4 } } })
     if (body.action === 'search') {
       const q = (body.q ?? '').toLowerCase()
       return route.fulfill({ headers, json: { places: PLACES.filter((p) => p.label.toLowerCase().includes(q.split(' ')[0])) } })

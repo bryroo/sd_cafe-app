@@ -161,34 +161,56 @@ test('use my current location: allowed and denied', async ({ page, context }) =>
   await expect(page.getByText('Location is turned off for this app.')).toBeVisible()
 })
 
-test('map tiles fail, then retry; offline', async ({ page, context }) => {
-  await openPinStep(page, { tiles: 'fail' })
-  await expect(page.getByText("The map couldn't load")).toBeVisible()
-  await expect(confirm(page)).toBeDisabled()
-  await mockOsm(page, { tiles: 'ok' })
-  await page.getByRole('button', { name: 'Try again' }).click()
-  await expect(page.getByText("The map couldn't load")).toBeHidden()
-  await expect(page.locator('.leaflet-tile-loaded').first()).toBeVisible()
-
-  await context.setOffline(true)
-  await expect(page.getByText('The map needs a connection')).toBeVisible()
-  await context.setOffline(false)
-  await expect(page.getByText('The map needs a connection')).toBeHidden()
+test('busy tile server: the map says loading, retries by itself and appears (never "failed")', async ({ page }) => {
+  // The first 20 tile requests are dropped, as an overloaded tile server would
+  const osm = await openPinStep(page, { tiles: 'busy-20' })
+  await expect(page.getByText('Loading the map…')).toBeVisible()
+  await expect(page.getByText('The map service is busy. We’ll keep trying.')).toBeVisible()
+  await expect(page.getByText(/couldn.t load|failed|Try again/)).toHaveCount(0)
+  await expect(page.locator('.leaflet-tile-loaded').first()).toBeVisible({ timeout: 30_000 })
+  await expect(page.getByText('Loading the map…')).toBeHidden()
+  expect(osm.tileRequests.length).toBeGreaterThan(20) // the dropped tiles were asked for again
 })
 
-test('address lookup down or rate-limited: the pin still works and the person is told', async ({ page }) => {
+test('offline: the map waits for the connection and loads by itself', async ({ page, context }) => {
+  // No tile has ever loaded in this browser (so none are cached), then the connection drops
+  await openPinStep(page, { tiles: 'fail' })
+  await page.goto('#/home')
+  await context.setOffline(true)
+  await page.goto('#/address/new')
+  await expect(page.getByText("You're offline. The map will load as soon as you're connected.")).toBeVisible()
+  await mockOsm(page, { tiles: 'ok' })
+  await context.setOffline(false)
+  await expect(page.getByText('Loading the map…')).toBeHidden({ timeout: 20_000 })
+  await expect(page.locator('.leaflet-tile-loaded').first()).toBeVisible()
+})
+
+test('busy address service: lookups keep loading until they work, with no error', async ({ page }) => {
+  // The first 3 lookups get BUSY / RATE_LIMIT (heavy traffic), then the service answers
+  const osm = await openPinStep(page, { lookup: 'busy-3' })
+  await mapBox(page).click()
+  await expect(pinStatus(page)).toContainText('Delivers here')
+  await expect(page.getByText('Looking up the street…', { exact: false }).first()).toBeVisible()
+  await expect(page.getByText('The address service is busy, so this may take a moment.', { exact: false })).toBeVisible()
+  await expect(pinStatus(page)).toContainText('P. Burgos Street, Poblacion, Bocaue', { timeout: 15_000 })
+  await expect(page.locator('.map-picker__lookup')).toHaveText('')
+  expect(osm.lookups.filter((l) => l.action === 'reverse').length).toBe(4) // 3 busy answers, then the street
+
+  await mockOsm(page, { lookup: 'busy-2' })
+  await searchBox(page).fill('Mabini')
+  await page.getByRole('button', { name: 'Search', exact: true }).click()
+  await expect(page.getByText('The address service is busy. Still searching…')).toBeVisible()
+  await expect(page.getByRole('button', { name: 'Searching…' })).toBeVisible()
+  await expect(page.getByRole('button', { name: /Mabini Street/ })).toBeVisible({ timeout: 15_000 })
+  await expect(page.getByText(/isn.t working|Try again|Wait a minute/)).toHaveCount(0)
+})
+
+test('a real lookup failure (not traffic) still says so; the pin keeps working', async ({ page }) => {
   await openPinStep(page, { lookup: 'fail' })
   await mapBox(page).click()
   await expect(pinStatus(page)).toContainText('Delivers here')
   await expect(page.getByText("Address lookup isn't working right now. Your pin is kept")).toBeVisible()
-  await searchBox(page).fill('Mabini')
-  await page.getByRole('button', { name: 'Search', exact: true }).click()
-  await expect(page.getByText("Address lookup isn't working right now. Tap the map")).toBeVisible()
   await expect(confirm(page)).toBeEnabled()
-
-  await mockOsm(page, { lookup: 'rate-limit' })
-  await page.getByRole('button', { name: 'Search', exact: true }).click()
-  await expect(page.getByText('Too many lookups. Wait a minute')).toBeVisible()
 })
 
 test('keyboard only: search, choose, confirm and save', async ({ page }) => {
