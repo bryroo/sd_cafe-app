@@ -54,6 +54,12 @@ Postgres `public` schema, following SRS v1.2.0 Table 4-1. Money is integer **cen
   - **at most 1 request per second app-wide**, and 30 lookups a minute per person (`geocode_call`, `geocode_take_slot()`);
   - an identifying User-Agent: set the `NOMINATIM_CONTACT` secret to a URL or email;
   - **no search-as-you-type**: search runs on Search/Enter. Keep it that way.
+- **Heavy traffic is never an error.** Waiting is handled in three places:
+  - **Server:** `geocode` queues for a free slot for about 6 s. It then answers `BUSY` (503) or `RATE_LIMIT` (429) with `retryAfter` in seconds, and Nominatim's own 429s, 5xx errors and timeouts become `BUSY`.
+  - **App:** [src/lib/geocode.ts](src/lib/geocode.ts) retries those, and offline, after `retryAfter` (else 1, 2, 4… up to 15 s), waiting for the `online` event when offline. It keeps going until the answer comes, a newer search or pin replaces it, or the address screen closes (its abort signal). The screen keeps "Searching…" or "Looking up the street…" and adds a "busy, still trying" note.
+  - **Tiles:** failed tiles are fetched again after 1, 2, 3, 5, 8, then every 10 s. Until the first tile arrives the map shows "Loading the map…" (with a busy or offline note) and never "failed".
+
+  Only non-retryable answers (`BAD_REQUEST`, `SIGN_IN`, `LOOKUP_FAILED`) show a message.
 
   `place_id` on addresses now holds an OSM id (`osm:W123`).
 - **Tiles and terms:** tiles come straight from `tile.openstreetmap.org` with no key. Its usage policy allows light use with the "© OpenStreetMap contributors" credit (Leaflet shows it; keep it visible) and forbids bulk or offline downloading, so the service worker never caches tiles. If traffic grows, or OSM asks, point `TILES` in MapPicker at a commercial or self-hosted tile provider, and likewise `NOMINATIM` in `_shared/geocode.ts`. Map data is ODbL.
