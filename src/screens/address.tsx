@@ -81,6 +81,9 @@ export function DeliveryAddress() {
 
   const inside = pin && area ? coversPoint(area, pin.lat, pin.lng) : null
 
+  // This screen loads lazily, after the app's own move to the new heading: do it once it's here
+  useEffect(focusHeading, [])
+
   // Fill in what Google says is at the pin, unless the person already typed it
   useEffect(() => {
     if (!geo) return

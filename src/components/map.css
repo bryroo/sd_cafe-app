@@ -1,11 +1,11 @@
 /* Map / Pin picker and pin preview. Tokens only. */
 
-.map-picker { display: flex; flex-direction: column; gap: var(--space-12); min-height: 0; flex: 1 0 auto; }
+.map-picker { display: flex; flex-direction: column; gap: var(--space-12); width: 100%; min-width: 0; }
 
 .map-picker__canvas {
   position: relative;
-  flex: 1 0 auto;
-  min-height: 320px;
+  /* Tall enough to find the house, short enough that the answer under it stays in view on a phone */
+  height: clamp(220px, 36dvh, 520px);
   border-radius: var(--radius-card);
   border: 1px solid var(--border);
   overflow: hidden;
@@ -110,11 +110,6 @@
 .coming-soon__body { display: flex; flex-direction: column; gap: var(--space-8); min-width: 0; }
 .coming-soon__body h2, .coming-soon__body p { margin: 0; }
 
-/* Pin step: the map takes the screen's height; the panel and the button stay visible */
-.pin-step { display: flex; flex-direction: column; gap: var(--space-12); min-height: calc(100dvh - 260px); }
-@media (min-width: 768px) {
-  .pin-step { min-height: 560px; }
-}
 
 /* Preview (SVG, no tiles) */
 .pin-preview { margin: 0; display: flex; flex-direction: column; gap: var(--space-4); }

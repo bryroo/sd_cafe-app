@@ -91,8 +91,10 @@ export function MapPicker({
   const cb = useRef({ onPin, onGeocoded })
   cb.current = { onPin, onGeocoded }
 
-  // Reverse geocode once the pin has settled
-  const geocodeSoon = useCallback((p: Pin) => {
+  // Reverse geocode once the pin has settled (taps and drags come in bursts; a search result or the
+  // current location is one answer, so it goes at once). A pending lookup still finishes after this
+  // step closes, so a quick Confirm doesn't lose the pre-filled street and barangay.
+  const geocodeSoon = useCallback((p: Pin, wait = 600) => {
     window.clearTimeout(geocodeTimer.current)
     const seq = ++geocodeSeq.current
     geocodeTimer.current = window.setTimeout(async () => {
@@ -104,7 +106,7 @@ export function MapPicker({
       } catch {
         if (seq === geocodeSeq.current) cb.current.onGeocoded(null)
       }
-    }, 600)
+    }, wait)
   }, [])
 
   const place = useCallback(
@@ -115,7 +117,7 @@ export function MapPicker({
         m.map = map.current
       }
       cb.current.onPin(p, source, placeId)
-      geocodeSoon(p)
+      geocodeSoon(p, source === 'search' || source === 'locate' ? 0 : 600)
     },
     [geocodeSoon],
   )
@@ -131,18 +133,12 @@ export function MapPicker({
         if (!live || !mapEl.current) return
         libs.current = l
         const start = pin ?? BOCAUE_CENTER
-        const b = area?.bounds
-        // About 3 km of slack around the area, so people near the edge can still find their street
-        const pad = 0.03
         const m = new l.maps.Map(mapEl.current, {
           mapId,
           center: start,
           zoom: pin ? 18 : 14,
           minZoom: 12,
           maxZoom: 21,
-          restriction: b
-            ? { latLngBounds: { north: b.north + pad, south: b.south - pad, east: b.east + pad, west: b.west - pad }, strictBounds: false }
-            : undefined,
           // One finger pans the map: it fills its own screen, so there's no page scroll to fight
           gestureHandling: 'greedy',
           clickableIcons: false,
@@ -155,17 +151,6 @@ export function MapPicker({
           colorScheme: isDark() ? 'DARK' : 'LIGHT',
         })
         map.current = m
-        if (area) {
-          m.data.addGeoJson(area.geojson)
-          m.data.setStyle({
-            clickable: false,
-            fillColor: cssVar('--gold', '#c9a227'),
-            fillOpacity: 0.06,
-            strokeColor: cssVar('--gold-ink', '#6e5512'),
-            strokeOpacity: 0.9,
-            strokeWeight: 2,
-          })
-        }
         const head = document.createElement('div')
         head.className = 'map-pin'
         head.innerHTML =
@@ -194,14 +179,36 @@ export function MapPicker({
     return () => {
       live = false
       off()
-      window.clearTimeout(geocodeTimer.current)
       if (marker.current) marker.current.map = null
       marker.current = null
       map.current = null
     }
-    // Built once per attempt; the pin and area at that moment are the starting point
+    // Built once per attempt (the pin at that moment is the starting point). The area is added below
+    // when it arrives, so a late outline never rebuilds the map or drops a pending geocode.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [attempt, area])
+  }, [attempt])
+
+  // The delivery area: outline it and keep panning near it (about 3 km of slack, so people near the edge
+  // can still find their street)
+  useEffect(() => {
+    const m = map.current
+    if (!ready || !m || !area) return
+    const b = area.bounds
+    const pad = 0.03
+    m.setOptions({
+      restriction: { latLngBounds: { north: b.north + pad, south: b.south - pad, east: b.east + pad, west: b.west - pad }, strictBounds: false },
+    })
+    const added = m.data.addGeoJson(area.geojson)
+    m.data.setStyle({
+      clickable: false,
+      fillColor: cssVar('--gold', '#c9a227'),
+      fillOpacity: 0.06,
+      strokeColor: cssVar('--gold-ink', '#6e5512'),
+      strokeOpacity: 0.9,
+      strokeWeight: 2,
+    })
+    return () => added.forEach((f) => m.data.remove(f))
+  }, [ready, area])
 
   const locate = () => {
     setLocateError('')
