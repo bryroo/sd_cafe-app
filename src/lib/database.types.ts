@@ -147,6 +147,34 @@ isOneToOne: false
       referencedColumns: ["reward_id"]
     }
                   ]
+                },"geocode_cache": {
+                  Row: {
+                    "cache_key": string,"fetched_at": string,"response": NonNullable<Json>
+                  }
+                  ComputedFields: never
+                  Insert: {
+                    "cache_key": string,"fetched_at"?: string,"response": NonNullable<Json>
+                  }
+                  Update: {
+                    "cache_key"?: string,"fetched_at"?: string,"response"?: NonNullable<Json>
+                  }
+                  Relationships: [
+                    
+                  ]
+                },"geocode_call": {
+                  Row: {
+                    "call_id": number,"called_at": string,"upstream": boolean,"user_id": string
+                  }
+                  ComputedFields: never
+                  Insert: {
+                    "call_id"?: never,"called_at"?: string,"upstream": boolean,"user_id": string
+                  }
+                  Update: {
+                    "call_id"?: never,"called_at"?: string,"upstream"?: boolean,"user_id"?: string
+                  }
+                  Relationships: [
+                    
+                  ]
                 },"internal_note": {
                   Row: {
                     "author_name": string,"body": string,"created_at": string,"note_id": number,"order_id": string,"staff_id": string | null
@@ -725,6 +753,9 @@ isOneToOne: false
                            },
 "demo_set_points":
 { Args: { "p_points": number }; Returns: undefined
+                           },
+"geocode_take_slot":
+{ Args: { "p_upstream": boolean,"p_user": string }; Returns: string
                            },
 "housekeeping":
 { Args: Record<PropertyKey, never>; Returns: undefined
