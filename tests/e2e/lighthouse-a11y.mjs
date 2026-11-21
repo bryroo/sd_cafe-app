@@ -1,5 +1,5 @@
-// Lighthouse accessibility scores for the delivery screens, signed in as the demo customer, with Google
-// Maps replaced by the mock (no Google request). Needs the e2e build served (see playwright.config.ts):
+// Lighthouse accessibility scores for the delivery screens, signed in as the demo customer. OpenStreetMap
+// tiles come from tests/e2e/tile.png, so no request reaches OSM. Needs the e2e build served (see playwright.config.ts):
 //
 //   npx vite preview --outDir dist-e2e --port 4180 --host 127.0.0.1    (built with the e2e env)
 //   node tests/e2e/lighthouse-a11y.mjs [minimum score, default 95]
@@ -12,7 +12,7 @@ import { join } from 'node:path'
 const BASE = 'http://127.0.0.1:4180/'
 const MIN = Number(process.argv[2] ?? 95)
 const PORT = 9341
-const MOCK = readFileSync(join(import.meta.dirname, 'maps-mock.js'), 'utf8')
+const TILE = readFileSync(join(import.meta.dirname, 'tile.png'))
 const PAGES = ['#/address/new', '#/fulfillment', '#/cart', '#/profile/addresses']
 
 const profile = mkdtempSync(join(tmpdir(), 'megs-lh-'))
@@ -22,7 +22,7 @@ const context = await chromium.launchPersistentContext(profile, {
   serviceWorkers: 'block',
   viewport: { width: 412, height: 823 },
 })
-await context.route('https://maps.googleapis.com/**', (r) => r.fulfill({ contentType: 'application/javascript', body: MOCK }))
+await context.route('https://tile.openstreetmap.org/**', (r) => r.fulfill({ contentType: 'image/png', body: TILE }))
 const page = context.pages()[0] ?? (await context.newPage())
 await page.goto(BASE + '#/log-in')
 await page.getByRole('button', { name: 'Log in' }).click()
