@@ -19,6 +19,7 @@
 
 .map-picker__cover {
   position: absolute;
+  z-index: 1000;
   inset: 0;
   display: flex;
   flex-direction: column;
@@ -34,8 +35,9 @@
 
 .map-picker__locate {
   position: absolute;
+  z-index: 500; /* above Leaflet panes, below its controls */
   left: var(--space-12);
-  bottom: var(--space-24);
+  bottom: var(--space-32);
   display: inline-flex;
   align-items: center;
   gap: var(--space-8);
@@ -53,41 +55,61 @@
 .map-picker__credit { margin: 0; }
 .map-picker__credit a { color: inherit; }
 
-/* The pin: a lit lamp-gold head with a dark ring; a grab hand says it can be dragged */
-.map-pin { cursor: grab; transform: translateY(4px); filter: drop-shadow(0 2px 2px rgb(0 0 0 / 0.35)); }
+/* The pin (a Leaflet divIcon): a lit lamp-gold head with a dark ring; a grab hand says it can be dragged */
+.map-pin { cursor: grab; background: none; border: 0; filter: drop-shadow(0 2px 2px rgb(0 0 0 / 0.35)); }
 .map-pin:active { cursor: grabbing; }
+.map-pin:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; border-radius: var(--radius-badge); }
 .map-pin path { fill: var(--gold); stroke: var(--plate); stroke-width: 2; }
 .map-pin circle { fill: var(--plate); }
 
-/* Search */
-.place-search { position: relative; display: flex; flex-direction: column; gap: var(--space-4); }
-.place-search__input { display: flex; align-items: center; gap: var(--space-8); padding-left: var(--space-12); }
-.place-search__input input { flex: 1 0 0; min-width: 0; border: 0; background: transparent; color: var(--ink); height: 52px; }
+/* Leaflet controls at the app's touch size and in its colours */
+.map-picker .leaflet-container { font: inherit; background: var(--raised); }
+.map-picker .leaflet-bar a,
+.map-picker .leaflet-touch .leaflet-bar a {
+  width: 44px;
+  height: 44px;
+  line-height: 44px;
+  font-size: var(--text-h2);
+  background: var(--surface);
+  color: var(--ink);
+  border-color: var(--border);
+}
+.map-picker .leaflet-bar a:hover { background: var(--active); }
+/* Leaflet's own CSS loads after this file (with the lazy map chunk): these selectors are one step more specific */
+.map-picker .leaflet-container .leaflet-control-attribution { font-size: var(--text-caption); line-height: var(--lh-caption); background: var(--surface); color: var(--muted); }
+.map-picker .leaflet-container .leaflet-control-attribution a { color: var(--ink); }
+.map-picker .leaflet-container:focus-visible { outline: 2px solid var(--focus); outline-offset: -2px; }
+
+/* Dark mode: OpenStreetMap only draws light tiles, so the tile layer is inverted to sit in the dark UI
+   (the outline, the pin and the controls are not filtered) */
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme='light']) .map-picker .leaflet-tile-pane { filter: invert(1) hue-rotate(180deg) brightness(0.9) contrast(0.9); }
+}
+:root[data-theme='dark'] .map-picker .leaflet-tile-pane { filter: invert(1) hue-rotate(180deg) brightness(0.9) contrast(0.9); }
+
+/* Search: runs on submit (Search button or Enter); results are a list of buttons */
+.place-search { display: flex; flex-direction: column; gap: var(--space-4); }
+.place-search__row { display: flex; gap: var(--space-8); align-items: stretch; }
+.place-search__input { flex: 1 0 0; min-width: 0; display: flex; align-items: center; gap: var(--space-8); padding-left: var(--space-12); }
+.place-search__input input { flex: 1 0 0; min-width: 0; border: 0; background: transparent; color: var(--ink); height: 50px; }
 .place-search__input input:focus { outline: none; }
 .place-search__input:focus-within { outline: 2px solid var(--focus); outline-offset: 1px; }
-.place-search__list {
-  position: absolute;
-  top: calc(100% - var(--space-16));
-  left: 0;
-  right: 0;
-  z-index: 5;
-  margin: 0;
-  padding: var(--space-4) 0;
-  list-style: none;
-  box-shadow: var(--elevation-2);
-  background: var(--surface);
-}
-.place-search__list li {
+.place-search__list { margin: 0; padding: var(--space-4) 0; list-style: none; background: var(--surface); }
+.place-search__list button {
   display: flex;
   flex-direction: column;
+  align-items: flex-start;
   gap: 2px;
+  width: 100%;
   min-height: 44px;
-  justify-content: center;
   padding: var(--space-8) var(--space-16);
+  text-align: left;
+  background: none;
+  border: 0;
+  color: var(--ink);
   cursor: pointer;
 }
-.place-search__list li:hover,
-.place-search__list li.is-active { background: var(--active); }
+.place-search__list button:hover { background: var(--active); }
 .place-search p { margin: 0; min-height: var(--lh-caption); }
 
 /* Eligibility panel under the map */

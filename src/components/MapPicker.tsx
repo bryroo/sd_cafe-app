@@ -1,66 +1,45 @@
-/// <reference types="google.maps" />
-// Map / Pin picker: the customer puts the pin on their exact door.
-//   * tap or click the map to drop the pin; drag it to adjust (a draggable Advanced Marker, which is
-//     also keyboard-operable: focus it, Space to pick up, arrow keys to move, Enter to drop)
-//   * search box (Places Autocomplete, New) limited to the Philippines and the delivery area, one session
-//     token per search so the suggestions are billed as one session ending in a Place Details call
-//   * Use my current location (browser Geolocation)
-//   * map/satellite and zoom controls; the delivery area is outlined
-// Pin moves are reported straight away; the address text from reverse geocoding follows ~600 ms later,
-// once the pin settles. The pin is the source of truth; the text only pre-fills the form.
+// Map / Pin picker (Leaflet + OpenStreetMap): the customer puts the pin on their exact door.
+//   * tap or click the map to drop the pin; drag it to adjust. The pin is keyboard-operable: Tab to it,
+//     then the arrow keys move it (Shift moves it further)
+//   * address search (OpenStreetMap Nominatim through the `geocode` Edge Function). It runs when the person
+//     presses Search, never while typing: Nominatim's usage policy forbids search-as-you-type
+//   * Use my current location (browser Geolocation); zoom buttons; the delivery area is outlined
+// Pin moves are reported straight away. The address text from the reverse lookup follows ~600 ms after
+// a tap or drag settles (at once for a search or the current location). The pin is the source of truth;
+// the text only pre-fills the form. Map tiles come from tile.openstreetmap.org and are never cached by the
+// service worker.
 import { useCallback, useEffect, useId, useRef, useState } from 'react'
-import { loadMaps, mapId, MapsError, onMapsRefused, type MapsLibs, type MapsProblem } from '../lib/maps'
+import L from 'leaflet'
+import 'leaflet/dist/leaflet.css'
+import { reversePlace, searchPlaces, type GeoPlace } from '../lib/geocode'
 import type { ServiceArea } from '../state/serviceArea'
 import { useOnline } from '../state/online'
 import { BOCAUE_CENTER, matchBarangay } from '../data/bocaue'
 import { Alert } from './order'
 import { Icon } from './Icon'
-import { Loader } from './ui'
+import { Button } from './ui'
 import './map.css'
 
 export type Pin = { lat: number; lng: number }
 export type PinSource = 'tap' | 'drag' | 'search' | 'locate'
-/** What Google's reverse geocoder says is at the pin (a suggestion; the person can change it) */
+/** What OpenStreetMap says is near the pin (a suggestion; the person can change it) */
 export type Geocoded = { line?: string; barangay?: string; town?: string; formatted?: string; placeId?: string }
 
-type Suggestion = { id: string; text: string; secondary: string; prediction: google.maps.places.PlacePrediction }
-
-const PROBLEM_TEXT: Record<MapsProblem, { title: string; body: string }> = {
-  'not-configured': { title: "The map isn't set up", body: 'Maps is not configured for this version of the app.' },
-  offline: { title: 'The map needs a connection', body: "You're offline. Connect, then try again." },
-  refused: {
-    title: "The map couldn't load",
-    body: 'Google Maps refused this request (the key, the daily limit or billing). Try again later.',
-  },
-  failed: { title: "The map couldn't load", body: 'Check your connection, then try again.' },
-}
+const TILES = 'https://tile.openstreetmap.org/{z}/{x}/{y}.png'
+const OSM_CREDIT = '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
+const PIN_SVG =
+  '<svg width="40" height="48" viewBox="0 0 40 48" aria-hidden="true"><path d="M20 46s15-14.5 15-26a15 15 0 1 0-30 0c0 11.5 15 26 15 26z"/><circle cx="20" cy="20" r="6"/></svg>'
 
 const cssVar = (name: string, fallback: string) =>
   getComputedStyle(document.documentElement).getPropertyValue(name).trim() || fallback
 
-const isDark = () => {
-  const t = document.documentElement.dataset.theme
-  return t ? t === 'dark' : window.matchMedia('(prefers-color-scheme: dark)').matches
-}
-
-/** Pulls a street line, barangay and town out of a Geocoding result */
-function readGeocode(results: google.maps.GeocoderResult[]): Geocoded | null {
-  const best = results.find((r) => r.types.includes('street_address') || r.types.includes('premise')) ?? results[0]
-  if (!best) return null
-  const all = results.flatMap((r) => r.address_components)
-  const get = (type: string, from = best.address_components) => from.find((c) => c.types.includes(type))?.long_name
-  const number = get('street_number')
-  const route = get('route')
-  const brgyName =
-    get('sublocality_level_1') ?? get('neighborhood') ?? get('sublocality_level_1', all) ?? get('neighborhood', all)
-  return {
-    line: [number, route].filter(Boolean).join(' ') || undefined,
-    barangay: matchBarangay(brgyName) ?? brgyName,
-    town: get('locality') ?? get('locality', all),
-    formatted: best.formatted_address,
-    placeId: best.place_id,
-  }
-}
+const toGeocoded = (p: GeoPlace): Geocoded => ({
+  line: p.line,
+  barangay: matchBarangay(p.area) ?? p.area,
+  town: p.town,
+  formatted: p.label,
+  placeId: p.osmId,
+})
 
 export function MapPicker({
   pin,
@@ -77,150 +56,170 @@ export function MapPicker({
 }) {
   const online = useOnline()
   const mapEl = useRef<HTMLDivElement>(null)
-  const libs = useRef<MapsLibs | null>(null)
-  const map = useRef<google.maps.Map | null>(null)
-  const marker = useRef<google.maps.marker.AdvancedMarkerElement | null>(null)
+  const map = useRef<L.Map | null>(null)
+  const tiles = useRef<L.TileLayer | null>(null)
+  const marker = useRef<L.Marker | null>(null)
   const geocodeTimer = useRef<number | undefined>(undefined)
   const geocodeSeq = useRef(0)
-  const [problem, setProblem] = useState<MapsProblem | null>(null)
-  const [ready, setReady] = useState(false)
-  const [attempt, setAttempt] = useState(0)
+  const [tilesFailed, setTilesFailed] = useState(false)
   const [locating, setLocating] = useState(false)
   const [locateError, setLocateError] = useState('')
   const [lookupNote, setLookupNote] = useState('')
-  // Latest callbacks without re-running the map setup
+  // Latest callbacks without rebuilding the map
   const cb = useRef({ onPin, onGeocoded })
   cb.current = { onPin, onGeocoded }
 
-  // Reverse geocode once the pin has settled (taps and drags come in bursts; a search result or the
-  // current location is one answer, so it goes at once). A pending lookup still finishes after this
-  // step closes, so a quick Confirm doesn't lose the pre-filled street and barangay.
+  // Reverse lookup once the pin has settled (taps and drags come in bursts; a search result or the
+  // current location is one answer, so it goes at once). A pending lookup still finishes after this step
+  // closes, so a quick Confirm doesn't lose the pre-filled street and barangay.
   const geocodeSoon = useCallback((p: Pin, wait = 600) => {
     window.clearTimeout(geocodeTimer.current)
     const seq = ++geocodeSeq.current
     geocodeTimer.current = window.setTimeout(async () => {
-      const g = libs.current?.geocoding
-      if (!g) return
-      try {
-        const { results } = await new g.Geocoder().geocode({ location: p })
-        if (seq !== geocodeSeq.current) return
-        const found = readGeocode(results)
-        cb.current.onGeocoded(found)
-        setLookupNote(found ? '' : "We couldn't find a street name for this spot. Type it in the next step.")
-      } catch (e) {
-        if (seq !== geocodeSeq.current) return
+      const r = await reversePlace(p.lat, p.lng)
+      if (seq !== geocodeSeq.current) return
+      if ('error' in r) {
         cb.current.onGeocoded(null)
-        // ZERO_RESULTS is an empty answer; anything else (REQUEST_DENIED: key, billing or quota) is Google refusing
-        const code = (e as { code?: string })?.code
         setLookupNote(
-          code === 'ZERO_RESULTS'
-            ? "We couldn't find a street name for this spot. Type it in the next step."
-            : "Google couldn't look up this spot's street right now. Your pin is saved as placed; type the street in the next step.",
+          r.error.code === 'OFFLINE'
+            ? "You're offline, so we couldn't look up the street. Type it in the next step."
+            : `${r.error.message.replace(/ Tap the map,? or type the address\.?$/, '')} Your pin is kept; type the street in the next step.`,
         )
+        return
       }
+      cb.current.onGeocoded(r.place ? toGeocoded(r.place) : null)
+      // No answer is fine: outside the area the Coming soon panel explains it; inside, the form asks
+      setLookupNote('')
     }, wait)
   }, [])
 
   const place = useCallback(
     (p: Pin, source: PinSource, placeId?: string) => {
-      const m = marker.current
+      const m = map.current
       if (m) {
-        m.position = p
-        m.map = map.current
+        if (!marker.current) {
+          marker.current = makeMarker(p).addTo(m)
+        } else marker.current.setLatLng(p)
       }
       cb.current.onPin(p, source, placeId)
       geocodeSoon(p, source === 'search' || source === 'locate' ? 0 : 600)
     },
+    // makeMarker is stable (declared below with useCallback)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
     [geocodeSoon],
   )
 
-  // Load the API and build the map
-  useEffect(() => {
-    let live = true
-    setProblem(null)
-    setReady(false)
-    const off = onMapsRefused(() => live && setProblem('refused'))
-    loadMaps()
-      .then((l) => {
-        if (!live || !mapEl.current) return
-        libs.current = l
-        const start = pin ?? BOCAUE_CENTER
-        const m = new l.maps.Map(mapEl.current, {
-          mapId,
-          center: start,
-          zoom: pin ? 18 : 14,
-          minZoom: 12,
-          maxZoom: 21,
-          // One finger pans the map: it fills its own screen, so there's no page scroll to fight
-          gestureHandling: 'greedy',
-          clickableIcons: false,
-          disableDefaultUI: true,
-          zoomControl: true,
-          mapTypeControl: true,
-          mapTypeControlOptions: { mapTypeIds: ['roadmap', 'hybrid'] },
-          fullscreenControl: false,
-          streetViewControl: false,
-          colorScheme: isDark() ? 'DARK' : 'LIGHT',
-        })
-        map.current = m
-        const head = document.createElement('div')
-        head.className = 'map-pin'
-        head.innerHTML =
-          '<svg width="40" height="48" viewBox="0 0 40 48" aria-hidden="true"><path d="M20 46s15-14.5 15-26a15 15 0 1 0-30 0c0 11.5 15 26 15 26z"/><circle cx="20" cy="20" r="6"/></svg>'
-        const mk = new l.marker.AdvancedMarkerElement({
-          map: pin ? m : null,
-          position: start,
-          content: head,
-          gmpDraggable: true,
-          title: 'Delivery pin. Drag to move it, or focus it and use the arrow keys.',
-        })
-        marker.current = mk
-        mk.addListener('dragend', () => {
-          const p = mk.position
-          if (!p) return
-          const lat = typeof p.lat === 'function' ? p.lat() : p.lat
-          const lng = typeof p.lng === 'function' ? p.lng() : p.lng
-          place({ lat, lng }, 'drag')
-        })
-        m.addListener('click', (e: google.maps.MapMouseEvent) => {
-          if (e.latLng) place({ lat: e.latLng.lat(), lng: e.latLng.lng() }, 'tap')
-        })
-        setReady(true)
+  // The pin: draggable, and movable with the arrow keys once focused
+  const makeMarker = useCallback(
+    (p: Pin) => {
+      const mk = L.marker(p, {
+        draggable: true,
+        keyboard: true,
+        autoPan: true,
+        title: 'Delivery pin',
+        alt: 'Delivery pin. Drag it, or use the arrow keys to move it.',
+        icon: L.divIcon({ className: 'map-pin', html: PIN_SVG, iconSize: [40, 48], iconAnchor: [20, 46] }),
       })
-      .catch((e) => live && setProblem(e instanceof MapsError ? e.problem : 'failed'))
-    return () => {
-      live = false
-      off()
-      if (marker.current) marker.current.map = null
-      marker.current = null
-      map.current = null
-    }
-    // Built once per attempt (the pin at that moment is the starting point). The area is added below
-    // when it arrives, so a late outline never rebuilds the map or drops a pending geocode.
+      mk.on('dragend', () => {
+        const ll = mk.getLatLng()
+        place({ lat: ll.lat, lng: ll.lng }, 'drag')
+      })
+      mk.on('add', () => {
+        const el = mk.getElement()
+        if (!el) return
+        el.addEventListener('keydown', (e) => {
+          const step = e.shiftKey ? 20 : 4
+          const d = { ArrowUp: [0, -step], ArrowDown: [0, step], ArrowLeft: [-step, 0], ArrowRight: [step, 0] }[e.key]
+          const m = map.current
+          if (!d || !m) return
+          e.preventDefault()
+          e.stopPropagation() // the map would pan instead
+          const pt = m.latLngToContainerPoint(mk.getLatLng()).add(L.point(d[0], d[1]))
+          const ll = m.containerPointToLatLng(pt)
+          place({ lat: ll.lat, lng: ll.lng }, 'drag')
+        })
+      })
+      return mk
+    },
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [attempt])
+    [],
+  )
 
-  // The delivery area: outline it and keep panning near it (about 3 km of slack, so people near the edge
-  // can still find their street)
+  // Build the map once
+  useEffect(() => {
+    const el = mapEl.current
+    if (!el) return
+    const start = pin ?? BOCAUE_CENTER
+    const m = L.map(el, {
+      center: start,
+      zoom: pin ? 18 : 14,
+      minZoom: 13,
+      maxZoom: 19,
+      zoomControl: true,
+      keyboard: true,
+      maxBoundsViscosity: 0.8,
+    })
+    m.attributionControl.setPrefix('<a href="https://leafletjs.com">Leaflet</a>')
+    let loadedAny = false
+    let errors = 0
+    const t = L.tileLayer(TILES, { maxZoom: 19, attribution: OSM_CREDIT })
+      .on('tileload', () => {
+        loadedAny = true
+        errors = 0
+        setTilesFailed(false)
+      })
+      .on('tileerror', () => {
+        errors++
+        if (!loadedAny && errors >= 3) setTilesFailed(true)
+      })
+      .addTo(m)
+    m.on('click', (e: L.LeafletMouseEvent) => place({ lat: e.latlng.lat, lng: e.latlng.lng }, 'tap'))
+    map.current = m
+    tiles.current = t
+    if (pin) marker.current = makeMarker(pin).addTo(m)
+    // The sheet and the screen can change size (keyboard, rotation): keep the tiles filling the box
+    const ro = new ResizeObserver(() => m.invalidateSize())
+    ro.observe(el)
+    return () => {
+      ro.disconnect()
+      m.remove()
+      map.current = null
+      marker.current = null
+      tiles.current = null
+    }
+    // Built once; the pin at that moment is the starting point
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+
+  // The delivery area: outline it and keep panning near it (about 3 km of slack around it)
   useEffect(() => {
     const m = map.current
-    if (!ready || !m || !area) return
+    if (!m || !area) return
     const b = area.bounds
     const pad = 0.03
-    m.setOptions({
-      restriction: { latLngBounds: { north: b.north + pad, south: b.south - pad, east: b.east + pad, west: b.west - pad }, strictBounds: false },
-    })
-    const added = m.data.addGeoJson(area.geojson)
-    m.data.setStyle({
-      clickable: false,
-      fillColor: cssVar('--gold', '#c9a227'),
-      fillOpacity: 0.06,
-      strokeColor: cssVar('--gold-ink', '#6e5512'),
-      strokeOpacity: 0.9,
-      strokeWeight: 2,
-    })
-    return () => added.forEach((f) => m.data.remove(f))
-  }, [ready, area])
+    m.setMaxBounds([
+      [b.south - pad, b.west - pad],
+      [b.north + pad, b.east + pad],
+    ])
+    const outline = L.geoJSON(area.geojson as GeoJSON.FeatureCollection, {
+      interactive: false,
+      style: {
+        color: cssVar('--gold-ink', '#6e5512'),
+        weight: 2,
+        opacity: 0.9,
+        fillColor: cssVar('--gold', '#c9a227'),
+        fillOpacity: 0.06,
+      },
+    }).addTo(m)
+    return () => {
+      outline.remove()
+    }
+  }, [area])
+
+  const retryTiles = () => {
+    setTilesFailed(false)
+    tiles.current?.redraw()
+  }
 
   const locate = () => {
     setLocateError('')
@@ -233,8 +232,7 @@ export function MapPicker({
       (pos) => {
         setLocating(false)
         const p = { lat: pos.coords.latitude, lng: pos.coords.longitude }
-        map.current?.panTo(p)
-        map.current?.setZoom(18)
+        map.current?.setView(p, 18)
         place(p, 'locate')
       },
       (err) => {
@@ -243,7 +241,7 @@ export function MapPicker({
           err.code === err.PERMISSION_DENIED
             ? 'Location is turned off for this app. Allow it in your browser settings, or search or tap the map instead.'
             : err.code === err.TIMEOUT
-              ? "Finding your location took too long. Try again, or search or tap the map instead."
+              ? 'Finding your location took too long. Try again, or search or tap the map instead.'
               : "Your location isn't available right now. Search for your street or tap the map instead.",
         )
       },
@@ -251,60 +249,55 @@ export function MapPicker({
     )
   }
 
-  const showProblem = problem ?? (!online && !ready ? 'offline' : null)
+  const problem = !online ? 'offline' : tilesFailed ? 'tiles' : null
 
   return (
     <div className="map-picker">
       <PlaceSearch
-        libs={ready ? libs.current : null}
-        area={area}
-        onPick={(p, placeId) => {
-          map.current?.panTo(p)
-          map.current?.setZoom(18)
-          place(p, 'search', placeId)
+        onPick={(p) => {
+          map.current?.setView(p, 18)
+          place({ lat: p.lat, lng: p.lng }, 'search', p.osmId)
         }}
       />
       <div className="map-picker__canvas">
         <div ref={mapEl} className="map-picker__map" role="region" aria-label={label} />
-        {!ready && !showProblem && (
-          <div className="map-picker__cover" aria-live="polite">
-            <Loader />
-            <span className="t-body-sm">Loading the map…</span>
-          </div>
-        )}
-        {showProblem && (
+        {problem && (
           <div className="map-picker__cover map-picker__cover--problem">
             <Alert
               tone="warning"
-              icon={showProblem === 'offline' ? 'offline' : 'alert'}
-              title={PROBLEM_TEXT[showProblem].title}
+              icon={problem === 'offline' ? 'offline' : 'alert'}
+              title={problem === 'offline' ? 'The map needs a connection' : "The map couldn't load"}
               action={
-                showProblem !== 'not-configured' && (
-                  <button type="button" className="t-body-sm link-text" onClick={() => setAttempt((n) => n + 1)}>
+                problem === 'tiles' && (
+                  <button type="button" className="t-body-sm link-text" onClick={retryTiles}>
                     Try again
                   </button>
                 )
               }
             >
-              {PROBLEM_TEXT[showProblem].body}
+              {problem === 'offline'
+                ? "You're offline. Connect, then try again."
+                : 'The map pictures didn’t arrive. Check your connection, then try again.'}
             </Alert>
           </div>
         )}
-        {ready && (
-          <button type="button" className="map-picker__locate" onClick={locate} disabled={locating} aria-busy={locating}>
-            <Icon name="pin" size={20} />
-            <span className="t-body-sm">{locating ? 'Finding you…' : 'Use my current location'}</span>
-          </button>
-        )}
+        <button type="button" className="map-picker__locate" onClick={locate} disabled={locating} aria-busy={locating}>
+          <Icon name="pin" size={20} />
+          <span className="t-body-sm">{locating ? 'Finding you…' : 'Use my current location'}</span>
+        </button>
       </div>
       {locateError && (
         <Alert tone="warning" icon="pin">
           {locateError}
         </Alert>
       )}
-      {lookupNote && <p className="t-caption muted" role="status">{lookupNote}</p>}
+      {lookupNote && (
+        <p className="t-caption muted" role="status">
+          {lookupNote}
+        </p>
+      )}
       <p className="t-caption muted map-picker__credit">
-        Delivery area outline ©{' '}
+        Map and addresses ©{' '}
         <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noreferrer">
           OpenStreetMap contributors
         </a>
@@ -313,141 +306,95 @@ export function MapPicker({
   )
 }
 
-/** Search with Places Autocomplete (New), drawn as our own combobox so it's keyboard- and screen-reader
- *  friendly and themed. One session token per search; fetching the chosen place ends the session. */
-function PlaceSearch({
-  libs,
-  area,
-  onPick,
-}: {
-  libs: MapsLibs | null
-  area: ServiceArea | null
-  onPick: (p: Pin, placeId: string) => void
-}) {
+/** Address search: runs on Search or Enter (Nominatim's policy rules out search-as-you-type). Results are
+ *  a plain list of buttons, so keyboards and screen readers need nothing special. */
+function PlaceSearch({ onPick }: { onPick: (p: GeoPlace) => void }) {
   const id = useId()
-  const listId = `${id}-list`
   const [q, setQ] = useState('')
-  const [items, setItems] = useState<Suggestion[]>([])
-  const [active, setActive] = useState(-1)
-  const [open, setOpen] = useState(false)
+  const [busy, setBusy] = useState(false)
+  const [results, setResults] = useState<GeoPlace[] | null>(null)
   const [note, setNote] = useState('')
-  const token = useRef<google.maps.places.AutocompleteSessionToken | null>(null)
-  const seq = useRef(0)
+  const firstResult = useRef<HTMLButtonElement>(null)
 
-  useEffect(() => {
-    if (!libs || q.trim().length < 3) {
-      setItems([])
+  const run = async () => {
+    const text = q.trim()
+    if (text.length < 3) {
+      setNote('Type at least 3 letters, like a street or a landmark.')
       return
     }
-    const mine = ++seq.current
-    const t = window.setTimeout(async () => {
-      try {
-        token.current ??= new libs.places.AutocompleteSessionToken()
-        const b = area?.bounds
-        const { suggestions } = await libs.places.AutocompleteSuggestion.fetchAutocompleteSuggestions({
-          input: q.trim(),
-          sessionToken: token.current,
-          includedRegionCodes: ['ph'],
-          language: 'en',
-          region: 'ph',
-          ...(b ? { locationRestriction: { north: b.north + 0.01, south: b.south - 0.01, east: b.east + 0.01, west: b.west - 0.01 } } : {}),
-        })
-        if (mine !== seq.current) return
-        const list = suggestions
-          .map((s) => s.placePrediction)
-          .filter((p): p is google.maps.places.PlacePrediction => !!p)
-          .slice(0, 5)
-          .map((p) => ({ id: p.placeId, text: p.mainText?.toString() ?? p.text.toString(), secondary: p.secondaryText?.toString() ?? '', prediction: p }))
-        setItems(list)
-        setActive(-1)
-        setOpen(true)
-        setNote(list.length ? '' : 'No places found near Bocaue. Try a street or landmark name, or tap the map.')
-      } catch {
-        if (mine === seq.current) setNote("Search isn't working right now. Tap the map to drop your pin.")
-      }
-    }, 300)
-    return () => window.clearTimeout(t)
-  }, [q, libs, area])
-
-  const choose = async (s: Suggestion) => {
-    setOpen(false)
-    setQ(s.text)
-    try {
-      const placeObj = s.prediction.toPlace()
-      await placeObj.fetchFields({ fields: ['location', 'formattedAddress'] })
-      token.current = null // the session ends with this Place Details call
-      if (placeObj.location) {
-        onPick({ lat: placeObj.location.lat(), lng: placeObj.location.lng() }, s.id)
-        setNote('Pin moved to that place. Drag it onto your door if it needs a nudge.')
-      }
-    } catch {
-      setNote("Couldn't open that place. Try another, or tap the map.")
+    setBusy(true)
+    setNote('')
+    const r = await searchPlaces(text)
+    setBusy(false)
+    if ('error' in r) {
+      setResults(null)
+      setNote(r.error.code === 'OFFLINE' ? "You're offline. Connect, or tap the map instead." : r.error.message)
+      return
     }
+    setResults(r.places)
+    setNote(
+      r.places.length
+        ? `${r.places.length} place${r.places.length === 1 ? '' : 's'} found. Choose one to move the pin there.`
+        : 'No places found near Bocaue. Try a street or landmark name, or tap the map.',
+    )
+    if (r.places.length) requestAnimationFrame(() => firstResult.current?.focus())
   }
 
   return (
-    <div className="place-search">
+    <form
+      className="place-search"
+      role="search"
+      onSubmit={(e) => {
+        e.preventDefault()
+        void run()
+      }}
+    >
       <label htmlFor={`${id}-input`} className="t-body-sm">
         Search for your street or a landmark
       </label>
-      <div className="field__input place-search__input">
-        <Icon name="search" size={20} />
-        <input
-          id={`${id}-input`}
-          className="t-body"
-          type="search"
-          role="combobox"
-          aria-expanded={open && items.length > 0}
-          aria-controls={listId}
-          aria-autocomplete="list"
-          aria-activedescendant={active >= 0 ? `${listId}-${active}` : undefined}
-          aria-describedby={`${id}-note`}
-          autoComplete="street-address"
-          enterKeyHint="search"
-          placeholder={libs ? 'e.g. Mabini St, Bocaue' : 'Search opens with the map'}
-          disabled={!libs}
-          value={q}
-          onChange={(e) => setQ(e.target.value)}
-          onFocus={() => items.length && setOpen(true)}
-          onBlur={() => window.setTimeout(() => setOpen(false), 150)}
-          onKeyDown={(e) => {
-            if (e.key === 'ArrowDown') {
-              e.preventDefault()
-              setOpen(true)
-              setActive((a) => Math.min(items.length - 1, a + 1))
-            } else if (e.key === 'ArrowUp') {
-              e.preventDefault()
-              setActive((a) => Math.max(0, a - 1))
-            } else if (e.key === 'Enter' && open && items[active >= 0 ? active : 0]) {
-              e.preventDefault()
-              void choose(items[active >= 0 ? active : 0])
-            } else if (e.key === 'Escape') {
-              setOpen(false)
-            }
-          }}
-        />
+      <div className="place-search__row">
+        <div className="field__input place-search__input">
+          <Icon name="search" size={20} />
+          <input
+            id={`${id}-input`}
+            className="t-body"
+            type="search"
+            autoComplete="street-address"
+            enterKeyHint="search"
+            placeholder="e.g. Mabini St, Bocaue"
+            maxLength={120}
+            value={q}
+            aria-describedby={`${id}-note`}
+            onChange={(e) => setQ(e.target.value)}
+          />
+        </div>
+        <Button type="submit" variant="secondary" height={52} full={false} disabled={busy} aria-busy={busy}>
+          {busy ? 'Searching…' : 'Search'}
+        </Button>
       </div>
-      {open && items.length > 0 && (
-        <ul id={listId} role="listbox" className="place-search__list card" aria-label="Places">
-          {items.map((s, i) => (
-            <li
-              key={s.id}
-              id={`${listId}-${i}`}
-              role="option"
-              aria-selected={i === active}
-              className={i === active ? 'is-active' : ''}
-              onMouseDown={(e) => e.preventDefault()}
-              onClick={() => void choose(s)}
-            >
-              <span className="t-body">{s.text}</span>
-              {s.secondary && <span className="t-caption muted">{s.secondary}</span>}
+      <p id={`${id}-note`} className="t-caption muted" aria-live="polite">
+        {note}
+      </p>
+      {results && results.length > 0 && (
+        <ul className="place-search__list card" aria-label="Places found">
+          {results.map((p, i) => (
+            <li key={`${p.osmId ?? i}-${p.lat}`}>
+              <button
+                ref={i === 0 ? firstResult : undefined}
+                type="button"
+                onClick={() => {
+                  onPick(p)
+                  setResults(null)
+                  setNote('Pin moved to that place. Drag it onto your door if it needs a nudge.')
+                }}
+              >
+                <span className="t-body">{p.line || p.label.split(',')[0]}</span>
+                <span className="t-caption muted">{p.label}</span>
+              </button>
             </li>
           ))}
         </ul>
       )}
-      <p id={`${id}-note`} className="t-caption muted" aria-live="polite">
-        {note}
-      </p>
-    </div>
+    </form>
   )
 }

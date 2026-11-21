@@ -1,6 +1,6 @@
 // A small, non-interactive picture of where the pin sits inside the delivery area: the area's outline
 // (OpenStreetMap) and the pin, drawn as SVG. No map tiles and no Google request, so it costs nothing and
-// works offline once the outline has loaded. "Open in Google Maps" is a plain link (no API key).
+// works offline once the outline has loaded. "Open the pin on OpenStreetMap" is a plain link.
 import { mapsLink } from '../lib/mapsLink'
 import { useServiceArea, type ServiceArea } from '../state/serviceArea'
 import './map.css'
@@ -43,7 +43,7 @@ export function PinPreview({ lat, lng, label = 'Delivery pin' }: { lat: number; 
       )}
       <figcaption className="t-caption">
         <a className="link-text" href={mapsLink(lat, lng)} target="_blank" rel="noreferrer">
-          Open the pin in Google Maps
+          Open the pin on OpenStreetMap
         </a>
       </figcaption>
     </figure>

@@ -13,7 +13,7 @@ import {
 } from './screens/account'
 import { Home, Menu, ProductDetail, Search, SectionList } from './screens/shop'
 import { Checkout, OrderConfirmation, PickupOrDelivery } from './screens/checkout'
-// Its own chunk: Google Maps code only loads for people who open the address screen
+// Its own chunk: the map (Leaflet) only loads for people who open the address screen
 const DeliveryAddress = lazy(() => import('./screens/address').then((m) => ({ default: m.DeliveryAddress })))
 import type { OverlayId } from './overlays/OverlayHost'
 import { OrderDetail, OrderTracking, Orders } from './screens/orders'

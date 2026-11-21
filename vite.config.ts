@@ -10,8 +10,9 @@ const INK = '#141414'
    straight to the network. Workbox serialises these functions into the worker, so each one must be
    self-contained (no outside variables).
    Never cached either: saved delivery addresses (GET /rest/v1/address, personal and only needed online)
-   and anything from Google Maps (maps.googleapis.com, maps.gstatic.com, places.googleapis.com): no route
-   matches them, so the map needs the network and shows its offline message without it. */
+   and OpenStreetMap tiles (tile.openstreetmap.org; OSM's tile policy forbids offline caching): no route
+   matches them, so the map needs the network and shows its offline message without it. Address lookups
+   go through the geocode Edge Function, which is never cached like every function. */
 
 // These run inside the service worker (DOM types come from tsconfig.node.json)
 type SwMatch = { url: URL; request: Request }

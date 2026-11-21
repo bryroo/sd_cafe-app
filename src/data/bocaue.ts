@@ -25,7 +25,7 @@ export const BOCAUE_BARANGAYS = [
   'Wakas',
 ] as const
 
-/** Matches a Google or OSM place name to the list ("Tambubong" → "Tambobong", "Binang 1st" → "Biñang 1st") */
+/** Matches an OpenStreetMap place name to the list ("Tambubong" → "Tambobong", "Binang 1st" → "Biñang 1st") */
 export function matchBarangay(name?: string): string | undefined {
   if (!name) return undefined
   const norm = (s: string) => s.toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/[^a-z0-9]/g, '')

@@ -45,7 +45,7 @@ describe('service area (client hint)', () => {
 })
 
 describe('barangay names', () => {
-  it('matches Google and OSM spellings', () => {
+  it('matches OpenStreetMap spellings', () => {
     expect(matchBarangay('Tambubong')).toBe('Tambobong')
     expect(matchBarangay('Binang 1st')).toBe('Biñang 1st')
     expect(matchBarangay('Brgy. Poblacion')).toBe('Poblacion')

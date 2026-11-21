@@ -1,4 +1,4 @@
-// C-33 Delivery address: add (`/address/new`) or edit (`/address/:id`). Lazy-loaded, so Google Maps code
+// C-33 Delivery address: add (`/address/new`) or edit (`/address/:id`). Lazy-loaded, so the map code
 // only reaches people who open this screen.
 //   Step 1, Pin: drop the pin on the door (map tap, drag, search or current location). The outline shows
 //   where we deliver; outside it the "Coming soon" panel blocks the address and offers pickup.
@@ -84,7 +84,7 @@ export function DeliveryAddress() {
   // This screen loads lazily, after the app's own move to the new heading: do it once it's here
   useEffect(focusHeading, [])
 
-  // Fill in what Google says is at the pin, unless the person already typed it
+  // Fill in what OpenStreetMap says is at the pin, unless the person already typed it
   useEffect(() => {
     if (!geo) return
     const b = matchBarangay(geo.barangay)
@@ -205,7 +205,7 @@ export function DeliveryAddress() {
                   {geo?.formatted && <p className="t-body-sm pin-status__address">Near {geo.formatted}</p>}
                   {geo?.town && !new RegExp(DELIVERY_TOWN, 'i').test(geo.town) && (
                     <p className="t-caption muted">
-                      Google lists this spot under {geo.town}. We go by your pin, which is inside {DELIVERY_TOWN}.
+                      OpenStreetMap lists this spot under {geo.town}. We go by your pin, which is inside {DELIVERY_TOWN}.
                     </p>
                   )}
                 </>
