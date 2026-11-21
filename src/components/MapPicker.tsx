@@ -17,7 +17,7 @@ import { useOnline } from '../state/online'
 import { BOCAUE_CENTER, matchBarangay } from '../data/bocaue'
 import { Alert } from './order'
 import { Icon } from './Icon'
-import { Button } from './ui'
+import { Button, Loader } from './ui'
 import './map.css'
 
 export type Pin = { lat: number; lng: number }
@@ -46,12 +46,15 @@ export function MapPicker({
   area,
   onPin,
   onGeocoded,
+  lookupSignal,
   label = 'Delivery location map',
 }: {
   pin: Pin | null
   area: ServiceArea | null
   onPin: (pin: Pin, source: PinSource, placeId?: string) => void
   onGeocoded: (g: Geocoded | null) => void
+  /** The address screen's lifetime: aborted when it closes, which stops a lookup still waiting for a busy server */
+  lookupSignal?: () => AbortSignal
   label?: string
 }) {
   const online = useOnline()
@@ -61,35 +64,46 @@ export function MapPicker({
   const marker = useRef<L.Marker | null>(null)
   const geocodeTimer = useRef<number | undefined>(undefined)
   const geocodeSeq = useRef(0)
-  const [tilesFailed, setTilesFailed] = useState(false)
+  const [tilesWaiting, setTilesWaiting] = useState(false)
+  const [tilesLoaded, setTilesLoaded] = useState(false)
   const [locating, setLocating] = useState(false)
   const [locateError, setLocateError] = useState('')
   const [lookupNote, setLookupNote] = useState('')
+  /** The street lookup for the current pin: running, or waiting out heavy traffic */
+  const [lookup, setLookup] = useState<'idle' | 'loading' | 'waiting'>('idle')
+  const lookupAbort = useRef<AbortController | null>(null)
   // Latest callbacks without rebuilding the map
-  const cb = useRef({ onPin, onGeocoded })
-  cb.current = { onPin, onGeocoded }
+  const cb = useRef({ onPin, onGeocoded, lookupSignal })
+  cb.current = { onPin, onGeocoded, lookupSignal }
 
   // Reverse lookup once the pin has settled (taps and drags come in bursts; a search result or the
-  // current location is one answer, so it goes at once). A pending lookup still finishes after this step
-  // closes, so a quick Confirm doesn't lose the pre-filled street and barangay.
+  // current location is one answer, so it goes at once). Busy servers or a dropped connection only make
+  // it wait and try again; a newer pin replaces it. It isn't tied to this map, so a quick Confirm still
+  // gets the street and barangay; the address screen stops it when the person leaves (lookupSignal).
   const geocodeSoon = useCallback((p: Pin, wait = 600) => {
     window.clearTimeout(geocodeTimer.current)
+    lookupAbort.current?.abort()
+    const ctrl = new AbortController()
+    lookupAbort.current = ctrl
+    const outer = cb.current.lookupSignal?.()
+    if (outer) {
+      if (outer.aborted) return
+      outer.addEventListener('abort', () => ctrl.abort(), { once: true })
+    }
     const seq = ++geocodeSeq.current
+    setLookup('loading')
+    setLookupNote('')
     geocodeTimer.current = window.setTimeout(async () => {
-      const r = await reversePlace(p.lat, p.lng)
-      if (seq !== geocodeSeq.current) return
+      const r = await reversePlace(p.lat, p.lng, { signal: ctrl.signal, onWaiting: () => seq === geocodeSeq.current && setLookup('waiting') })
+      if (!r || seq !== geocodeSeq.current) return
+      setLookup('idle')
       if ('error' in r) {
         cb.current.onGeocoded(null)
-        setLookupNote(
-          r.error.code === 'OFFLINE'
-            ? "You're offline, so we couldn't look up the street. Type it in the next step."
-            : `${r.error.message.replace(/ Tap the map,? or type the address\.?$/, '')} Your pin is kept; type the street in the next step.`,
-        )
+        setLookupNote(`${r.error.message.replace(/ Tap the map,? or type the address\.?$/, '')} Your pin is kept; type the street in the next step.`)
         return
       }
       cb.current.onGeocoded(r.place ? toGeocoded(r.place) : null)
       // No answer is fine: outside the area the Coming soon panel explains it; inside, the form asks
-      setLookupNote('')
     }, wait)
   }, [])
 
@@ -160,19 +174,33 @@ export function MapPicker({
       maxBoundsViscosity: 0.8,
     })
     m.attributionControl.setPrefix('<a href="https://leafletjs.com">Leaflet</a>')
+    // A tile that fails (a busy tile server, a weak connection) is fetched again after 1, 2, 3, 5, 8, then
+    // every 10 s, for as long as the map is open. Until the first tile arrives the map says "Loading",
+    // never "failed".
+    const RETRY_MS = [1000, 2000, 3000, 5000, 8000, 10_000]
     let loadedAny = false
-    let errors = 0
+    let alive = true
+    const retries = new WeakMap<HTMLElement, number>()
     const t = L.tileLayer(TILES, { maxZoom: 19, attribution: OSM_CREDIT })
       .on('tileload', () => {
         loadedAny = true
-        errors = 0
-        setTilesFailed(false)
+        setTilesLoaded(true)
+        setTilesWaiting(false)
       })
-      .on('tileerror', () => {
-        errors++
-        if (!loadedAny && errors >= 3) setTilesFailed(true)
+      .on('tileerror', (e: L.TileErrorEvent) => {
+        if (!loadedAny) setTilesWaiting(true)
+        const img = e.tile as HTMLImageElement
+        const n = retries.get(img) ?? 0
+        retries.set(img, n + 1)
+        window.setTimeout(() => {
+          // Still on the map (not panned away or zoomed out of view)?
+          if (alive && img.isConnected) img.src = t.getTileUrl(e.coords)
+        }, RETRY_MS[Math.min(n, RETRY_MS.length - 1)] + Math.random() * 300)
       })
       .addTo(m)
+    // Back online: fetch what's missing now rather than at the next retry
+    const reconnect = () => t.redraw()
+    window.addEventListener('online', reconnect)
     m.on('click', (e: L.LeafletMouseEvent) => place({ lat: e.latlng.lat, lng: e.latlng.lng }, 'tap'))
     map.current = m
     tiles.current = t
@@ -181,6 +209,8 @@ export function MapPicker({
     const ro = new ResizeObserver(() => m.invalidateSize())
     ro.observe(el)
     return () => {
+      alive = false
+      window.removeEventListener('online', reconnect)
       ro.disconnect()
       m.remove()
       map.current = null
@@ -216,11 +246,6 @@ export function MapPicker({
     }
   }, [area])
 
-  const retryTiles = () => {
-    setTilesFailed(false)
-    tiles.current?.redraw()
-  }
-
   const locate = () => {
     setLocateError('')
     if (!('geolocation' in navigator) || !window.isSecureContext) {
@@ -249,7 +274,8 @@ export function MapPicker({
     )
   }
 
-  const problem = !online ? 'offline' : tilesFailed ? 'tiles' : null
+  // Nothing on the map yet and it's struggling: say it's loading (and why it's slow), never "failed"
+  const waitingFor = !online && !tilesLoaded ? 'connection' : tilesWaiting ? 'tiles' : null
 
   return (
     <div className="map-picker">
@@ -261,24 +287,15 @@ export function MapPicker({
       />
       <div className="map-picker__canvas">
         <div ref={mapEl} className="map-picker__map" role="region" aria-label={label} />
-        {problem && (
-          <div className="map-picker__cover map-picker__cover--problem">
-            <Alert
-              tone="warning"
-              icon={problem === 'offline' ? 'offline' : 'alert'}
-              title={problem === 'offline' ? 'The map needs a connection' : "The map couldn't load"}
-              action={
-                problem === 'tiles' && (
-                  <button type="button" className="t-body-sm link-text" onClick={retryTiles}>
-                    Try again
-                  </button>
-                )
-              }
-            >
-              {problem === 'offline'
-                ? "You're offline. Connect, then try again."
-                : 'The map pictures didn’t arrive. Check your connection, then try again.'}
-            </Alert>
+        {waitingFor && (
+          <div className="map-picker__cover" role="status" aria-live="polite">
+            <Loader />
+            <span className="t-button">Loading the map…</span>
+            <span className="t-body-sm">
+              {waitingFor === 'connection'
+                ? "You're offline. The map will load as soon as you're connected."
+                : 'The map service is busy. We’ll keep trying.'}
+            </span>
           </div>
         )}
         <button type="button" className="map-picker__locate" onClick={locate} disabled={locating} aria-busy={locating}>
@@ -291,11 +308,13 @@ export function MapPicker({
           {locateError}
         </Alert>
       )}
-      {lookupNote && (
-        <p className="t-caption muted" role="status">
-          {lookupNote}
-        </p>
-      )}
+      <p className="t-caption muted map-picker__lookup" role="status" aria-live="polite">
+        {lookup === 'loading'
+          ? 'Looking up the street…'
+          : lookup === 'waiting'
+            ? 'Looking up the street… The address service is busy, so this may take a moment.'
+            : lookupNote}
+      </p>
       <p className="t-caption muted map-picker__credit">
         Map and addresses ©{' '}
         <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noreferrer">
@@ -315,20 +334,33 @@ function PlaceSearch({ onPick }: { onPick: (p: GeoPlace) => void }) {
   const [results, setResults] = useState<GeoPlace[] | null>(null)
   const [note, setNote] = useState('')
   const firstResult = useRef<HTMLButtonElement>(null)
+  const running = useRef<AbortController | null>(null)
+  // Leaving the screen stops a search that is still waiting for a busy server
+  useEffect(() => () => running.current?.abort(), [])
 
+  // Heavy traffic or a dropped connection only makes the search wait (it keeps "Searching…" and says why);
+  // searching again replaces it
   const run = async () => {
     const text = q.trim()
     if (text.length < 3) {
       setNote('Type at least 3 letters, like a street or a landmark.')
       return
     }
+    running.current?.abort()
+    const ctrl = new AbortController()
+    running.current = ctrl
     setBusy(true)
+    setResults(null)
     setNote('')
-    const r = await searchPlaces(text)
+    const r = await searchPlaces(text, {
+      signal: ctrl.signal,
+      onWaiting: () =>
+        setNote(navigator.onLine ? 'The address service is busy. Still searching…' : "You're offline. Searching as soon as you're connected…"),
+    })
+    if (!r) return // replaced by a newer search, or the screen closed
     setBusy(false)
     if ('error' in r) {
-      setResults(null)
-      setNote(r.error.code === 'OFFLINE' ? "You're offline. Connect, or tap the map instead." : r.error.message)
+      setNote(r.error.message)
       return
     }
     setResults(r.places)
@@ -337,8 +369,12 @@ function PlaceSearch({ onPick }: { onPick: (p: GeoPlace) => void }) {
         ? `${r.places.length} place${r.places.length === 1 ? '' : 's'} found. Choose one to move the pin there.`
         : 'No places found near Bocaue. Try a street or landmark name, or tap the map.',
     )
-    if (r.places.length) requestAnimationFrame(() => firstResult.current?.focus())
   }
+
+  // New results: move focus to the first one once it's on screen (keyboard and screen-reader users land on them)
+  useEffect(() => {
+    if (results?.length) firstResult.current?.focus()
+  }, [results])
 
   return (
     <form
@@ -368,7 +404,7 @@ function PlaceSearch({ onPick }: { onPick: (p: GeoPlace) => void }) {
             onChange={(e) => setQ(e.target.value)}
           />
         </div>
-        <Button type="submit" variant="secondary" height={52} full={false} disabled={busy} aria-busy={busy}>
+        <Button type="submit" variant="secondary" height={52} full={false} aria-busy={busy}>
           {busy ? 'Searching…' : 'Search'}
         </Button>
       </div>

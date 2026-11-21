@@ -81,6 +81,14 @@ export function DeliveryAddress() {
 
   const inside = pin && area ? coversPoint(area, pin.lat, pin.lng) : null
 
+  // Street lookups may wait out heavy traffic; leaving this screen stops them (a fresh controller per mount)
+  const lookups = useRef<AbortController>(new AbortController())
+  useEffect(() => {
+    if (lookups.current.signal.aborted) lookups.current = new AbortController()
+    const c = lookups.current
+    return () => c.abort()
+  }, [])
+
   // This screen loads lazily, after the app's own move to the new heading: do it once it's here
   useEffect(focusHeading, [])
 
@@ -177,6 +185,7 @@ export function DeliveryAddress() {
                 setGeo(null)
               }}
               onGeocoded={setGeo}
+              lookupSignal={() => lookups.current.signal}
             />
           </Row>
           <Row>
