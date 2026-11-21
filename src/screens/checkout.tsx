@@ -17,7 +17,8 @@ import {
   PriceBreakdown,
   lineName,
 } from '../components/order'
-import { etaLine, type CartLine } from '../state/shared'
+import { etaLine, isPinned, type CartLine } from '../state/shared'
+import { DELIVERY_AREA_LABEL } from '../data/bocaue'
 import { Button, Loader } from '../components/ui'
 import { Icon } from '../components/Icon'
 import { Lamp } from '../components/Lamp'
@@ -64,7 +65,8 @@ export function PickupOrDelivery() {
       topBar={<TopBar title="Pickup or delivery" />}
       footer={
         <Button
-          disabled={fulfillment === 'delivery' && !address}
+          disabled={fulfillment === 'delivery' && !isPinned(address)}
+          aria-describedby={fulfillment === 'delivery' && !isPinned(address) ? 'delivery-why' : undefined}
           onClick={() => navigate('/checkout', { replace: true })}
         >
           Done
@@ -84,7 +86,31 @@ export function PickupOrDelivery() {
           <>
             <Row>
               <h2 className="t-h3">Deliver to</h2>
+              <p className="t-body-sm muted">We deliver within {DELIVERY_AREA_LABEL}. Each address needs a pin on the map.</p>
             </Row>
+            {!isPinned(address) && (
+              <Row>
+                <div id="delivery-why">
+                  <Alert
+                    tone="warning"
+                    icon="pin"
+                    action={
+                      <button
+                        type="button"
+                        className="t-body-sm link-text"
+                        onClick={() => navigate(address ? `/address/${address.id}` : '/address/new')}
+                      >
+                        {address ? 'Pin it' : 'Add address'}
+                      </button>
+                    }
+                  >
+                    {address
+                      ? `Your ${address.label} address has no pin yet, so we can't deliver there. Pin it on the map, or choose pickup.`
+                      : 'Add a delivery address and pin it on the map, or choose pickup.'}
+                  </Alert>
+                </div>
+              </Row>
+            )}
             <Row>
               <div className="address-list" role="radiogroup" aria-label="Delivery address">
                 {addresses.map((a) => (
@@ -136,7 +162,9 @@ export function Checkout() {
   // One id per checkout: a retry or a double tap re-sends the same id and never makes a second order
   const attempt = useRef(crypto.randomUUID())
   const address = addresses.find((a) => a.id === addressId)
-  const blocked = !open.open || unavailableLines.length > 0
+  // Delivery needs a pinned address (the server also checks the pin is inside the service area)
+  const deliveryBlocked = fulfillment === 'delivery' && !isPinned(address)
+  const blocked = !open.open || unavailableLines.length > 0 || (session === 'member' && deliveryBlocked)
   const hint = offerHint(cart)
   // A voucher picked for this order that this cart doesn't qualify for yet: say what it needs
   const held = app.myRewards.some((m) => m.rewardId === app.appliedReward && m.status === 'Redeemed')
@@ -216,6 +244,14 @@ export function Checkout() {
       case 'SIGN_IN':
         overlay.open('login-to-order')
         return
+      // The server's delivery-area check: the cart is kept; pickup is one tap away
+      case 'OUT_OF_AREA':
+        overlay.toast(r.message, { label: 'Pickup instead', onClick: () => app.setFulfillment('pickup') })
+        return
+      case 'ADDRESS_NEEDS_PIN':
+        overlay.toast(r.message)
+        if (address) navigate(`/address/${address.id}`)
+        return
       default:
         // TOTAL_CHANGED, STORE_CLOSED, ITEM_UNAVAILABLE, DELIVERY_OFF, ADDRESS, PAYMENT: the cart is kept
         overlay.toast(r.message)
@@ -266,6 +302,24 @@ export function Checkout() {
         {promoProblem && (
           <Row>
             <Alert tone="warning">{promoProblem}</Alert>
+          </Row>
+        )}
+        {session === 'member' && deliveryBlocked && (
+          <Row>
+            <Alert
+              tone="warning"
+              icon="pin"
+              title="Delivery needs a pinned address"
+              action={
+                <button type="button" className="t-body-sm link-text" onClick={() => navigate('/fulfillment')}>
+                  Choose
+                </button>
+              }
+            >
+              {address
+                ? `Your ${address.label} address has no pin on the map yet. Pin it, choose another address, or switch to pickup. Your items stay in the cart.`
+                : 'Add an address in Bocaue and pin it on the map, or switch to pickup. Your items stay in the cart.'}
+            </Alert>
           </Row>
         )}
         <div className="review">
