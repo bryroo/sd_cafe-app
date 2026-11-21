@@ -217,7 +217,7 @@ insert into public.orders (order_id, idempotency_key, cafe_id, customer_id, cust
   delivery_address, subtotal, tier_discount, promotion_id, promotion_label, promo_discount,
   customer_reward_id, reward_name, reward_discount, delivery_fee, total, points_to_earn, eta)
 select '00000000-0000-0000-0000-00000000f002', gen_random_uuid(), 1, '00000000-0000-0000-0000-0000000000c1', 'Maria Santos',
-  '+639171234567', 'delivery', '{"street":"12 Mabini St","barangay":"San Roque","city":"Quezon City"}',
+  '+639171234567', 'delivery', '{"street":"12 Mabini St","barangay":"Poblacion","city":"Bocaue","lat":14.7949017,"lng":120.9254911}',
   30000, 1500, 'promo-megs10', 'Promo MEGS10', 2850, cr.customer_reward_id, 'Free snack', 11000, 2500, 17150, 171,
   now() + interval '35 minutes'
 from public.customer_reward cr where cr.customer_id = '00000000-0000-0000-0000-0000000000c1';

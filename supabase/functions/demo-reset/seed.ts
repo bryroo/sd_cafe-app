@@ -106,15 +106,18 @@ export async function seedDemo(db: SupabaseClient) {
   // is_demo: only these accounts may use demo_set_points (the screen index's points shortcut)
   must(await db.from('customer').update({ is_demo: true, mobile_verified_at: ago(90 * DAY).toISOString(), created_at: ago(90 * DAY).toISOString() }).in('customer_id', Object.values(ids)))
 
-  // Addresses and payment methods (FR-PRF-03, FR-PRF-04)
+  // Addresses and payment methods (FR-PRF-03, FR-PRF-04). Delivery is Bocaue only, so every demo address is
+  // pinned there (OSM place points for Poblacion and Lolomboy); the database refuses pins outside the area.
+  const HOME = { lat: 14.7949017, lng: 120.9254911 }
+  const OFFICE = { lat: 14.7811638, lng: 120.9353354 }
   const [home, , leoWork] = must(
     await db
       .from('address')
       .insert([
-        { customer_id: ids.maria, label: 'Home', recipient_name: 'Maria Santos', street: '12 Mabini St', barangay: 'San Roque', city: 'Quezon City', mobile_no: '+639171234567', notes: 'Leave at the door', is_default: true },
-        { customer_id: ids.maria, label: 'Work', recipient_name: 'Maria Santos', street: 'Unit 8B, Greenfield Tower', barangay: 'Wack-Wack Greenhills', city: 'Mandaluyong City', mobile_no: '+639171234567' },
-        { customer_id: ids.leo, label: 'Work', recipient_name: 'Leo Tan', street: '21F Greenfield Tower', barangay: 'Wack-Wack Greenhills', city: 'Mandaluyong City', mobile_no: '+639195550177', is_default: true },
-        { customer_id: ids.paolo, label: 'Work', recipient_name: 'Paolo Reyes', street: '15F Greenfield Tower', barangay: 'Wack-Wack Greenhills', city: 'Mandaluyong City', mobile_no: '+639185550142', is_default: true },
+        { customer_id: ids.maria, label: 'Home', recipient_name: 'Maria Santos', street: '12 Mabini St', barangay: 'Poblacion', city: 'Bocaue', mobile_no: '+639171234567', notes: 'Leave at the door', landmark: 'Near the church', lat: HOME.lat, lng: HOME.lng, is_default: true },
+        { customer_id: ids.maria, label: 'Work', recipient_name: 'Maria Santos', street: 'Unit 8B, Greenfield Tower', barangay: 'Lolomboy', city: 'Bocaue', mobile_no: '+639171234567', lat: OFFICE.lat, lng: OFFICE.lng },
+        { customer_id: ids.leo, label: 'Work', recipient_name: 'Leo Tan', street: '21F Greenfield Tower', barangay: 'Lolomboy', city: 'Bocaue', mobile_no: '+639195550177', lat: OFFICE.lat, lng: OFFICE.lng, is_default: true },
+        { customer_id: ids.paolo, label: 'Work', recipient_name: 'Paolo Reyes', street: '15F Greenfield Tower', barangay: 'Lolomboy', city: 'Bocaue', mobile_no: '+639185550142', lat: OFFICE.lat, lng: OFFICE.lng, is_default: true },
       ], { defaultToNull: false })
       .select(),
   ) as { address_id: string }[]
@@ -181,7 +184,7 @@ export async function seedDemo(db: SupabaseClient) {
           customer_mobile: p.mobile,
           fulfillment,
           address_id: fulfillment === 'delivery' ? home.address_id : null,
-          delivery_address: fulfillment === 'delivery' ? { label: 'Home', recipient_name: p.name, street: '12 Mabini St', barangay: 'San Roque', city: 'Quezon City' } : null,
+          delivery_address: fulfillment === 'delivery' ? { label: 'Home', recipient_name: p.name, street: '12 Mabini St', barangay: 'Poblacion', city: 'Bocaue', landmark: 'Near the church', mobile_no: p.mobile, notes: 'Leave at the door', lat: HOME.lat, lng: HOME.lng } : null,
           subtotal: cents(t.subtotal),
           tier_name: t.tierName,
           tier_discount: cents(t.discount),
